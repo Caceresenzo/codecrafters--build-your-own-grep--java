@@ -93,6 +93,11 @@ public class Pattern {
 					break;
 				}
 
+				case '$': {
+					current.next = current = new End();
+					break;
+				}
+
 				default: {
 					current.next = current = new CharProperty(new AsciiClass(currentChar));
 					break;
@@ -160,10 +165,26 @@ public class Pattern {
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
-			final var from = matcher.from;
+			final var startIndex = matcher.from;
 
-			if (index == from && next.match(matcher, index, sequence)) {
+			if (index == startIndex && next.match(matcher, index, sequence)) {
 				matcher.first = index;
+				return true;
+			}
+
+			return false;
+		}
+
+	}
+
+	static class End extends Node {
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			final var endIndex = matcher.to;
+
+			if (index == endIndex && next.match(matcher, index, sequence)) {
+				matcher.hitEnd = true;
 				return true;
 			}
 

@@ -80,4 +80,12 @@ class PatternTest {
 		assertFalse(pattern.matcher("slog").find(0));
 	}
 
+	@Test
+	void endAnchor() {
+		final var pattern = Pattern.compile("dog$");
+
+		assertTrue(pattern.matcher("dog").find(0));
+		assertFalse(pattern.matcher("dogs").find(0));
+	}
+
 }
