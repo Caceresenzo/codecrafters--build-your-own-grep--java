@@ -41,6 +41,11 @@ public class Pattern {
 					final var array = new AsciiArrayClass();
 					final var ranges = new ArrayList<CharacterRangeClass>();
 
+					final var negate = index < expression.length() && expression.charAt(index) == '^';
+					if (negate) {
+						index++;
+					}
+
 					while (index < expression.length()) {
 						currentChar = expression.charAt(index++);
 
@@ -58,12 +63,16 @@ public class Pattern {
 						}
 					}
 
-					final CharPredicate predicate;
+					CharPredicate predicate;
 
 					if (ranges.isEmpty()) {
 						predicate = array;
 					} else {
-						predicate = new OrCharPredicate(array, ranges.toArray(CharPredicate[]::new));
+						predicate = new CharPredicate.Or(array, ranges.toArray(CharPredicate[]::new));
+					}
+
+					if (negate) {
+						predicate = new CharPredicate.Not(predicate);
 					}
 
 					current.next = current = new CharProperty(predicate);
@@ -149,6 +158,43 @@ public class Pattern {
 
 		boolean test(char character);
 
+		@RequiredArgsConstructor
+		static class Or implements CharPredicate {
+
+			private final List<CharPredicate> children;
+
+			public Or(CharPredicate first, CharPredicate... others) {
+				this.children = new ArrayList<>(1 + others.length);
+
+				children.add(first);
+				Collections.addAll(children, others);
+			}
+
+			@Override
+			public boolean test(char character) {
+				for (final var child : children) {
+					if (child.test(character)) {
+						return true;
+					}
+				}
+
+				return false;
+			}
+
+		}
+
+		@RequiredArgsConstructor
+		static class Not implements CharPredicate {
+
+			private final CharPredicate predicate;
+
+			@Override
+			public boolean test(char character) {
+				return !predicate.test(character);
+			}
+
+		}
+
 	}
 
 	@RequiredArgsConstructor
@@ -221,31 +267,6 @@ public class Pattern {
 		@Override
 		public boolean test(char character) {
 			return characters[character];
-		}
-
-	}
-
-	@RequiredArgsConstructor
-	static class OrCharPredicate implements CharPredicate {
-
-		private final List<CharPredicate> children;
-
-		public OrCharPredicate(CharPredicate first, CharPredicate... others) {
-			this.children = new ArrayList<>(1 + others.length);
-
-			children.add(first);
-			Collections.addAll(children, others);
-		}
-
-		@Override
-		public boolean test(char character) {
-			for (final var child : children) {
-				if (child.test(character)) {
-					return true;
-				}
-			}
-
-			return false;
 		}
 
 	}

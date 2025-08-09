@@ -48,4 +48,21 @@ class PatternTest {
 		assertFalse(pattern.matcher("d").find(0));
 	}
 
+	@Test
+	void negativeCharacterGroup() {
+		final var pattern = Pattern.compile("[^abc]");
+
+		assertFalse(pattern.matcher("a").find(0));
+		assertTrue(pattern.matcher("d").find(0));
+	}
+
+	@Test
+	void negativeCharacterGroupWithDigits() {
+		final var pattern = Pattern.compile("[^abc\\d]");
+
+		assertFalse(pattern.matcher("a").find(0));
+		assertFalse(pattern.matcher("1").find(0));
+		assertTrue(pattern.matcher("d").find(0));
+	}
+
 }
