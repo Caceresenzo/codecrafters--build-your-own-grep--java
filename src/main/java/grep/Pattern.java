@@ -1,5 +1,9 @@
 package grep;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 import lombok.RequiredArgsConstructor;
 
 public class Pattern {
@@ -27,14 +31,47 @@ public class Pattern {
 			switch (currentChar) {
 				case '\\': {
 					currentChar = expression.charAt(index++);
-					final var characterClass = CharacterClass.fromIdentifier(currentChar);
+					final var characterClass = CharacterRangeClass.fromIdentifier(currentChar);
 
-					current.next = current = new Range(characterClass);
+					current.next = current = new CharProperty(characterClass);
+					break;
+				}
+
+				case '[': {
+					final var array = new AsciiArrayClass();
+					final var ranges = new ArrayList<CharacterRangeClass>();
+
+					while (index < expression.length()) {
+						currentChar = expression.charAt(index++);
+
+						if (currentChar == ']') {
+							break;
+						}
+
+						if (currentChar == '\\') {
+							currentChar = expression.charAt(index++);
+
+							final var characterClass = CharacterRangeClass.fromIdentifier(currentChar);
+							ranges.add(characterClass);
+						} else {
+							array.add(currentChar);
+						}
+					}
+
+					final CharPredicate predicate;
+
+					if (ranges.isEmpty()) {
+						predicate = array;
+					} else {
+						predicate = new OrCharPredicate(array, ranges.toArray(CharPredicate[]::new));
+					}
+
+					current.next = current = new CharProperty(predicate);
 					break;
 				}
 
 				default: {
-					current.next = current = new Literal(currentChar);
+					current.next = current = new CharProperty(new AsciiClass(currentChar));
 					break;
 				}
 			}
@@ -74,32 +111,9 @@ public class Pattern {
 	}
 
 	@RequiredArgsConstructor
-	static class Literal extends Node {
+	static class CharProperty extends Node {
 
-		final char character;
-
-		@Override
-		public boolean match(Matcher matcher, int index, CharSequence sequence) {
-			if (index < matcher.to) {
-				char value = sequence.charAt(index);
-
-				++index;
-
-				if (index <= matcher.to) {
-					return value == character && next.match(matcher, index, sequence);
-				}
-			}
-
-			matcher.hitEnd = true;
-			return false;
-		}
-
-	}
-
-	@RequiredArgsConstructor
-	static class Range extends Node {
-
-		final CharacterClass characterClass;
+		final CharPredicate predicate;
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
@@ -109,7 +123,7 @@ public class Pattern {
 				++index;
 
 				if (index <= matcher.to) {
-					return characterClass.test(value) && next.match(matcher, index, sequence);
+					return predicate.test(value) && next.match(matcher, index, sequence);
 				}
 			}
 
@@ -126,6 +140,112 @@ public class Pattern {
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
 			matcher.last = index;
 			return true;
+		}
+
+	}
+
+	@FunctionalInterface
+	static interface CharPredicate {
+
+		boolean test(char character);
+
+	}
+
+	@RequiredArgsConstructor
+	enum CharacterRangeClass implements CharPredicate {
+
+		DIGITS('d') {
+
+			@Override
+			public boolean test(char character) {
+				return character >= '0' && character <= '9';
+			}
+
+		},
+
+		WORDS('w') {
+
+			@Override
+			public boolean test(char character) {
+				return (character >= '0' && character <= '9')
+					|| (character >= 'a' && character <= 'z')
+					|| (character >= 'A' && character <= 'Z')
+					|| (character == '_');
+			}
+
+		};
+
+		private final char identifier;
+
+		public static CharacterRangeClass fromIdentifier(char identifier) {
+			for (CharacterRangeClass characterClass : values()) {
+				if (characterClass.identifier == identifier) {
+					return characterClass;
+				}
+			}
+
+			throw new IllegalArgumentException("unknown character class identifier: " + identifier);
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class AsciiClass implements CharPredicate {
+
+		private final char value;
+
+		@Override
+		public boolean test(char character) {
+			return value == character;
+		}
+
+	}
+
+	static class AsciiArrayClass implements CharPredicate {
+
+		private final boolean[] characters;
+
+		public AsciiArrayClass() {
+			this.characters = new boolean[256];
+		}
+
+		public AsciiArrayClass(boolean[] characters) {
+			this.characters = characters;
+		}
+
+		public boolean add(char character) {
+			characters[character] = true;
+			return true;
+		}
+
+		@Override
+		public boolean test(char character) {
+			return characters[character];
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class OrCharPredicate implements CharPredicate {
+
+		private final List<CharPredicate> children;
+
+		public OrCharPredicate(CharPredicate first, CharPredicate... others) {
+			this.children = new ArrayList<>(1 + others.length);
+
+			children.add(first);
+			Collections.addAll(children, others);
+		}
+
+		@Override
+		public boolean test(char character) {
+			for (final var child : children) {
+				if (child.test(character)) {
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 	}

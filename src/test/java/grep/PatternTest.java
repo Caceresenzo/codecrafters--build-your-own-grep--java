@@ -31,4 +31,21 @@ class PatternTest {
 		assertFalse(pattern.matcher("?").find(0));
 	}
 
+	@Test
+	void positiveCharacterGroup() {
+		final var pattern = Pattern.compile("[abc]");
+
+		assertTrue(pattern.matcher("a").find(0));
+		assertFalse(pattern.matcher("d").find(0));
+	}
+
+	@Test
+	void positiveCharacterGroupWithDigits() {
+		final var pattern = Pattern.compile("[abc\\d]");
+
+		assertTrue(pattern.matcher("a").find(0));
+		assertTrue(pattern.matcher("1").find(0));
+		assertFalse(pattern.matcher("d").find(0));
+	}
+
 }
