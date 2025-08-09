@@ -72,4 +72,12 @@ class PatternTest {
 		assertFalse(pattern.matcher("sally has 12 apples").find(0));
 	}
 
+	@Test
+	void startAnchor() {
+		final var pattern = Pattern.compile("^log");
+
+		assertTrue(pattern.matcher("log").find(0));
+		assertFalse(pattern.matcher("slog").find(0));
+	}
+
 }

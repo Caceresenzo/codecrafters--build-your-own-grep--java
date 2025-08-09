@@ -88,6 +88,11 @@ public class Pattern {
 					break;
 				}
 
+				case '^': {
+					current.next = current = new Begin();
+					break;
+				}
+
 				default: {
 					current.next = current = new CharProperty(new AsciiClass(currentChar));
 					break;
@@ -146,6 +151,22 @@ public class Pattern {
 			}
 
 			matcher.hitEnd = true;
+			return false;
+		}
+
+	}
+
+	static class Begin extends Node {
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			final var from = matcher.from;
+
+			if (index == from && next.match(matcher, index, sequence)) {
+				matcher.first = index;
+				return true;
+			}
+
 			return false;
 		}
 
