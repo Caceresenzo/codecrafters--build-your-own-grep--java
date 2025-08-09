@@ -1,4 +1,8 @@
+package grep;
+
 import java.util.Scanner;
+
+import lombok.Cleanup;
 
 public class Main {
 
@@ -8,22 +12,19 @@ public class Main {
 			System.exit(1);
 		}
 
-		String pattern = args[1];
+		String patternString = args[1];
+
+		@Cleanup
 		Scanner scanner = new Scanner(System.in);
 		String inputLine = scanner.nextLine();
 
-		if (matchPattern(inputLine, pattern)) {
+		final var pattern = Pattern.compile(patternString);
+		final var matcher = pattern.matcher(inputLine);
+
+		if (matcher.find(0)) {
 			System.exit(0);
 		} else {
 			System.exit(1);
-		}
-	}
-
-	public static boolean matchPattern(String inputLine, String pattern) {
-		if (pattern.length() == 1) {
-			return inputLine.contains(pattern);
-		} else {
-			throw new RuntimeException("Unhandled pattern: " + pattern);
 		}
 	}
 
