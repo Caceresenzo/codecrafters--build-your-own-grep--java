@@ -114,4 +114,11 @@ class PatternTest {
 		assertTrue(pattern.matcher("dogs").find(0));
 	}
 
+	@Test
+	void wildcard() {
+		final var pattern = Pattern.compile("d.g");
+
+		assertTrue(pattern.matcher("dog").find(0));
+	}
+
 }

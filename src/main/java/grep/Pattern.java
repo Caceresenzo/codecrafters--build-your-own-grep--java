@@ -36,7 +36,7 @@ public class Pattern {
 
 					CharPredicate predicate;
 					if (currentChar == '\\') {
-						predicate = new AsciiClass(currentChar);
+						predicate = new CharPredicate.Character(currentChar);
 					} else {
 						predicate = CharacterRangeClass.fromIdentifier(currentChar);
 					}
@@ -120,9 +120,15 @@ public class Pattern {
 					break;
 				}
 
+				case '.': {
+					previous = current;
+					previous.next = current = new CharProperty(new CharPredicate.Any());
+					break;
+				}
+
 				default: {
 					previous = current;
-					previous.next = current = new CharProperty(new AsciiClass(currentChar));
+					previous.next = current = new CharProperty(new CharPredicate.Character(currentChar));
 					break;
 				}
 			}
@@ -310,6 +316,27 @@ public class Pattern {
 		boolean test(char character);
 
 		@RequiredArgsConstructor
+		static class Character implements CharPredicate {
+
+			private final char value;
+
+			@Override
+			public boolean test(char character) {
+				return value == character;
+			}
+
+			@Override
+			public String toString() {
+				if (value == '\\') {
+					return "\\\\";
+				}
+
+				return String.valueOf(value);
+			}
+
+		}
+
+		@RequiredArgsConstructor
 		static class Or implements CharPredicate {
 
 			private final List<CharPredicate> children;
@@ -364,6 +391,21 @@ public class Pattern {
 
 		}
 
+		@RequiredArgsConstructor
+		static class Any implements CharPredicate {
+
+			@Override
+			public boolean test(char character) {
+				return true;
+			}
+
+			@Override
+			public String toString() {
+				return ".";
+			}
+
+		}
+
 	}
 
 	@RequiredArgsConstructor
@@ -405,27 +447,6 @@ public class Pattern {
 			}
 
 			throw new IllegalArgumentException("unknown character class identifier: " + identifier);
-		}
-
-	}
-
-	@RequiredArgsConstructor
-	static class AsciiClass implements CharPredicate {
-
-		private final char value;
-
-		@Override
-		public boolean test(char character) {
-			return value == character;
-		}
-
-		@Override
-		public String toString() {
-			if (value == '\\') {
-				return "\\\\";
-			}
-
-			return String.valueOf(value);
 		}
 
 	}
