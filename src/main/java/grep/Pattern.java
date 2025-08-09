@@ -31,9 +31,15 @@ public class Pattern {
 			switch (currentChar) {
 				case '\\': {
 					currentChar = expression.charAt(index++);
-					final var characterClass = CharacterRangeClass.fromIdentifier(currentChar);
 
-					current.next = current = new CharProperty(characterClass);
+					CharPredicate predicate;
+					if (currentChar == '\\') {
+						predicate = new AsciiClass(currentChar);
+					} else {
+						predicate = CharacterRangeClass.fromIdentifier(currentChar);
+					}
+
+					current.next = current = new CharProperty(predicate);
 					break;
 				}
 
@@ -56,15 +62,18 @@ public class Pattern {
 						if (currentChar == '\\') {
 							currentChar = expression.charAt(index++);
 
-							final var characterClass = CharacterRangeClass.fromIdentifier(currentChar);
-							ranges.add(characterClass);
+							if (currentChar == '\\') {
+								array.add(currentChar);
+							} else {
+								final var characterClass = CharacterRangeClass.fromIdentifier(currentChar);
+								ranges.add(characterClass);
+							}
 						} else {
 							array.add(currentChar);
 						}
 					}
 
 					CharPredicate predicate;
-
 					if (ranges.isEmpty()) {
 						predicate = array;
 					} else {

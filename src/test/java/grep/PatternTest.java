@@ -65,4 +65,11 @@ class PatternTest {
 		assertTrue(pattern.matcher("d").find(0));
 	}
 
+	@Test
+	void escape() {
+		final var pattern = Pattern.compile("\\d\\\\d\\\\d apples");
+
+		assertFalse(pattern.matcher("sally has 12 apples").find(0));
+	}
+
 }
