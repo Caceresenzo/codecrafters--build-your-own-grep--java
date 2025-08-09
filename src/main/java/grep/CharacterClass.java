@@ -12,6 +12,18 @@ public enum CharacterClass {
 			return character >= '0' && character <= '9';
 		}
 
+	},
+
+	WORDS('w') {
+
+		@Override
+		public boolean test(char character) {
+			return (character >= '0' && character <= '9')
+				|| (character >= 'a' && character <= 'z')
+				|| (character >= 'A' && character <= 'Z')
+				|| (character == '_');
+		}
+
 	};
 
 	private final char identifier;

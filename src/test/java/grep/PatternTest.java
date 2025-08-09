@@ -23,4 +23,12 @@ class PatternTest {
 		assertFalse(pattern.matcher("a").find(0));
 	}
 
+	@Test
+	void rangeWords() {
+		final var pattern = Pattern.compile("\\w");
+
+		assertTrue(pattern.matcher("a").find(0));
+		assertFalse(pattern.matcher("?").find(0));
+	}
+
 }
