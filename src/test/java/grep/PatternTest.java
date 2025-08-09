@@ -88,4 +88,22 @@ class PatternTest {
 		assertFalse(pattern.matcher("dogs").find(0));
 	}
 
+	@Test
+	void matchOneOrMoreTimes() {
+		final var pattern = Pattern.compile("ca+ts");
+
+		assertFalse(pattern.matcher("ca").find(0));
+		assertTrue(pattern.matcher("cats").find(0));
+		assertTrue(pattern.matcher("caats").find(0));
+		assertTrue(pattern.matcher("caaats").find(0));
+		assertFalse(pattern.matcher("dog").find(0));
+	}
+
+	@Test
+	void matchOneOrMoreTimesWithAfter() {
+		final var pattern = Pattern.compile("ca+at");
+
+		assertTrue(pattern.matcher("caaats").find(0));
+	}
+
 }

@@ -3,6 +3,7 @@ package grep;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,6 +22,7 @@ public class Pattern {
 	public static Pattern compile(String expression) {
 		Node root = new Start();
 		var current = root;
+		Node previous = null;
 
 		int index = 0;
 
@@ -39,7 +41,8 @@ public class Pattern {
 						predicate = CharacterRangeClass.fromIdentifier(currentChar);
 					}
 
-					current.next = current = new CharProperty(predicate);
+					previous = current;
+					previous.next = current = new CharProperty(predicate);
 					break;
 				}
 
@@ -84,22 +87,34 @@ public class Pattern {
 						predicate = new CharPredicate.Not(predicate);
 					}
 
-					current.next = current = new CharProperty(predicate);
+					previous = current;
+					previous.next = current = new CharProperty(predicate);
 					break;
 				}
 
 				case '^': {
-					current.next = current = new Begin();
+					previous = current;
+					previous.next = current = new Begin();
 					break;
 				}
 
 				case '$': {
-					current.next = current = new End();
+					previous = current;
+					previous.next = current = new End();
+					break;
+				}
+
+				case '+': {
+					current.next = new Last();
+
+					final var repeat = new Repeat(current, 1);
+					previous.next = current = repeat;
 					break;
 				}
 
 				default: {
-					current.next = current = new CharProperty(new AsciiClass(currentChar));
+					previous = current;
+					previous.next = current = new CharProperty(new AsciiClass(currentChar));
 					break;
 				}
 			}
@@ -136,6 +151,11 @@ public class Pattern {
 			return false;
 		}
 
+		@Override
+		public String toString() {
+			return "-START-";
+		}
+
 	}
 
 	@RequiredArgsConstructor
@@ -148,15 +168,17 @@ public class Pattern {
 			if (index < matcher.to) {
 				char value = sequence.charAt(index);
 
-				++index;
-
-				if (index <= matcher.to) {
-					return predicate.test(value) && next.match(matcher, index, sequence);
-				}
+				// TODO currently only support ascii
+				return predicate.test(value) && next.match(matcher, index + 1, sequence);
 			}
 
 			matcher.hitEnd = true;
 			return false;
+		}
+
+		@Override
+		public String toString() {
+			return predicate.toString();
 		}
 
 	}
@@ -175,6 +197,11 @@ public class Pattern {
 			return false;
 		}
 
+		@Override
+		public String toString() {
+			return "^";
+		}
+
 	}
 
 	static class End extends Node {
@@ -191,15 +218,63 @@ public class Pattern {
 			return false;
 		}
 
+		@Override
+		public String toString() {
+			return "$";
+		}
+
 	}
 
 	@RequiredArgsConstructor
+	static class Repeat extends Node {
+
+		final Node atom;
+		final int min;
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			int count = 0;
+			for (; count < min; ++count) {
+				if (!atom.match(matcher, index, sequence)) {
+					return false;
+				}
+
+				index = matcher.last;
+			}
+
+			while (index < matcher.to) {
+				if (next.match(matcher, index, sequence)) {
+					return true;
+				}
+
+				if (!atom.match(matcher, index, sequence)) {
+					break;
+				}
+
+				index = matcher.last;
+			}
+
+			return next.match(matcher, index, sequence);
+		}
+
+		@Override
+		public String toString() {
+			return atom + "{" + min + "}";
+		}
+
+	}
+
 	static class Last extends Node {
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
 			matcher.last = index;
 			return true;
+		}
+
+		@Override
+		public String toString() {
+			return "-LAST-";
 		}
 
 	}
@@ -232,6 +307,13 @@ public class Pattern {
 				return false;
 			}
 
+			@Override
+			public String toString() {
+				return children.stream()
+					.map(CharPredicate::toString)
+					.collect(Collectors.joining("", "[", "]"));
+			}
+
 		}
 
 		@RequiredArgsConstructor
@@ -242,6 +324,17 @@ public class Pattern {
 			@Override
 			public boolean test(char character) {
 				return !predicate.test(character);
+			}
+
+			@Override
+			public String toString() {
+				if (predicate instanceof Or or) {
+					return or.children.stream()
+						.map(CharPredicate::toString)
+						.collect(Collectors.joining("", "[^", "]"));
+				} else {
+					return "[^" + predicate.toString() + "]";
+				}
 			}
 
 		}
@@ -274,6 +367,11 @@ public class Pattern {
 
 		private final char identifier;
 
+		@Override
+		public String toString() {
+			return "\\" + identifier;
+		}
+
 		public static CharacterRangeClass fromIdentifier(char identifier) {
 			for (CharacterRangeClass characterClass : values()) {
 				if (characterClass.identifier == identifier) {
@@ -294,6 +392,15 @@ public class Pattern {
 		@Override
 		public boolean test(char character) {
 			return value == character;
+		}
+
+		@Override
+		public String toString() {
+			if (value == '\\') {
+				return "\\\\";
+			}
+
+			return String.valueOf(value);
 		}
 
 	}
@@ -318,6 +425,23 @@ public class Pattern {
 		@Override
 		public boolean test(char character) {
 			return characters[character];
+		}
+
+		@Override
+		public String toString() {
+			final var builder = new StringBuilder();
+
+			for (var index = 0; index < characters.length; ++index) {
+				if (characters[index]) {
+					if (builder.length() > 0) {
+						builder.append(',');
+					}
+
+					builder.append((char) index);
+				}
+			}
+
+			return builder.toString();
 		}
 
 	}
