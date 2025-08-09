@@ -106,4 +106,12 @@ class PatternTest {
 		assertTrue(pattern.matcher("caaats").find(0));
 	}
 
+	@Test
+	void matchZeroOrOneTimes() {
+		final var pattern = Pattern.compile("dogs?");
+
+		assertTrue(pattern.matcher("dog").find(0));
+		assertTrue(pattern.matcher("dogs").find(0));
+	}
+
 }

@@ -107,7 +107,15 @@ public class Pattern {
 				case '+': {
 					current.next = new Last();
 
-					final var repeat = new Repeat(current, 1);
+					final var repeat = new Repeat(current, 1, Repeat.UNBOUNDED);
+					previous.next = current = repeat;
+					break;
+				}
+
+				case '?': {
+					current.next = new Last();
+
+					final var repeat = new Repeat(current, 0, 1);
 					previous.next = current = repeat;
 					break;
 				}
@@ -228,8 +236,11 @@ public class Pattern {
 	@RequiredArgsConstructor
 	static class Repeat extends Node {
 
+		static final int UNBOUNDED = -1;
+
 		final Node atom;
 		final int min;
+		final int max;
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
@@ -242,7 +253,9 @@ public class Pattern {
 				index = matcher.last;
 			}
 
-			while (index < matcher.to) {
+			final var max = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
+
+			while (index < matcher.to && count++ < max) {
 				if (next.match(matcher, index, sequence)) {
 					return true;
 				}
@@ -259,7 +272,19 @@ public class Pattern {
 
 		@Override
 		public String toString() {
-			return atom + "{" + min + "}";
+			if (min == 0 && max == UNBOUNDED) {
+				return atom + "*";
+			} else if (min == 1 && max == UNBOUNDED) {
+				return atom + "+";
+			} else if (max == UNBOUNDED) {
+				return atom + "{" + min + ",}";
+			} else if (min == UNBOUNDED) {
+				return atom + "{," + max + "}";
+			} else if (min == max) {
+				return atom + "{" + min + "}";
+			}
+
+			return atom + "{" + min + "," + max + "}";
 		}
 
 	}
