@@ -10,9 +10,11 @@ import lombok.RequiredArgsConstructor;
 public class Pattern {
 
 	final Node root;
+	final int groupCount;
 
-	private Pattern(Node root) {
+	private Pattern(Node root, int groupCount) {
 		this.root = root;
+		this.groupCount = groupCount;
 	}
 
 	public Matcher matcher(CharSequence sequence) {
@@ -20,122 +22,179 @@ public class Pattern {
 	}
 
 	public static Pattern compile(String expression) {
-		Node root = new Start();
-		var current = root;
-		Node previous = null;
+		return new Parser(expression).parse();
+	}
 
-		int index = 0;
+	static class Parser {
 
-		char currentChar;
-		while (index < expression.length()) {
-			currentChar = expression.charAt(index++);
+		private Context context = new Context(null, new Last());
 
-			switch (currentChar) {
-				case '\\': {
-					currentChar = expression.charAt(index++);
+		private String expression;
+		private int index = 0;
 
-					CharPredicate predicate;
-					if (currentChar == '\\') {
-						predicate = new CharPredicate.Character(currentChar);
-					} else {
-						predicate = CharacterRangeClass.fromIdentifier(currentChar);
-					}
+		private int groupCount = 0;
 
-					previous = current;
-					previous.next = current = new CharProperty(predicate);
-					break;
-				}
-
-				case '[': {
-					final var array = new AsciiArrayClass();
-					final var ranges = new ArrayList<CharacterRangeClass>();
-
-					final var negate = index < expression.length() && expression.charAt(index) == '^';
-					if (negate) {
-						index++;
-					}
-
-					while (index < expression.length()) {
-						currentChar = expression.charAt(index++);
-
-						if (currentChar == ']') {
-							break;
-						}
-
-						if (currentChar == '\\') {
-							currentChar = expression.charAt(index++);
-
-							if (currentChar == '\\') {
-								array.add(currentChar);
-							} else {
-								final var characterClass = CharacterRangeClass.fromIdentifier(currentChar);
-								ranges.add(characterClass);
-							}
-						} else {
-							array.add(currentChar);
-						}
-					}
-
-					CharPredicate predicate;
-					if (ranges.isEmpty()) {
-						predicate = array;
-					} else {
-						predicate = new CharPredicate.Or(array, ranges.toArray(CharPredicate[]::new));
-					}
-
-					if (negate) {
-						predicate = new CharPredicate.Not(predicate);
-					}
-
-					previous = current;
-					previous.next = current = new CharProperty(predicate);
-					break;
-				}
-
-				case '^': {
-					previous = current;
-					previous.next = current = new Begin();
-					break;
-				}
-
-				case '$': {
-					previous = current;
-					previous.next = current = new End();
-					break;
-				}
-
-				case '+': {
-					current.next = new Last();
-
-					final var repeat = new Repeat(current, 1, Repeat.UNBOUNDED);
-					previous.next = current = repeat;
-					break;
-				}
-
-				case '?': {
-					current.next = new Last();
-
-					final var repeat = new Repeat(current, 0, 1);
-					previous.next = current = repeat;
-					break;
-				}
-
-				case '.': {
-					previous = current;
-					previous.next = current = new CharProperty(new CharPredicate.Any());
-					break;
-				}
-
-				default: {
-					previous = current;
-					previous.next = current = new CharProperty(new CharPredicate.Character(currentChar));
-					break;
-				}
-			}
+		Parser(String expression) {
+			this.expression = expression;
 		}
 
-		current.next = new Last();
-		return new Pattern(root);
+		Pattern parse() {
+			while (hasNext()) {
+				parseNext();
+			}
+
+			context.end();
+
+			final var root = new Start();
+			root.next = context.root;
+
+			return new Pattern(root, groupCount);
+		}
+
+		public boolean hasNext() {
+			return index < expression.length();
+		}
+
+		private boolean parseNext() {
+			final var character = consume();
+
+			switch (character) {
+				case '\\' -> handleEscape();
+				case '[' -> handleCharacterGroup();
+				case '^' -> context.add(new Begin());
+				case '$' -> context.add(new End());
+				case '+' -> context.replace(new Repeat(context.current, 1, Repeat.UNBOUNDED), context.last);
+				case '?' -> context.replace(new Repeat(context.current, 0, 1), context.last);
+				case '.' -> context.add(new CharProperty(new CharPredicate.Any()));
+				case '(' -> handleCaptureGroup();
+				default -> context.add(new CharProperty(new CharPredicate.Character(character)));
+			}
+
+			return true;
+		}
+
+		private char peek() {
+			return expression.charAt(index);
+		}
+
+		private char consume() {
+			return expression.charAt(index++);
+		}
+
+		private void handleEscape() {
+			final var character = consume();
+
+			CharPredicate predicate;
+			if (character == '\\') {
+				predicate = new CharPredicate.Character(character);
+			} else {
+				predicate = CharacterRangeClass.fromIdentifier(character);
+			}
+
+			context.add(new CharProperty(predicate));
+		}
+
+		private void handleCharacterGroup() {
+			final var array = new AsciiArrayClass();
+			final var ranges = new ArrayList<CharacterRangeClass>();
+
+			final var negate = index < expression.length() && expression.charAt(index) == '^';
+			if (negate) {
+				index++;
+			}
+
+			while (index < expression.length()) {
+				var character = consume();
+
+				if (character == ']') {
+					break;
+				}
+
+				if (character == '\\') {
+					character = consume();
+
+					if (character == '\\') {
+						array.add(character);
+					} else {
+						final var characterClass = CharacterRangeClass.fromIdentifier(character);
+						ranges.add(characterClass);
+					}
+				} else {
+					array.add(character);
+				}
+			}
+
+			CharPredicate predicate;
+			if (ranges.isEmpty()) {
+				predicate = array;
+			} else {
+				predicate = new CharPredicate.Or(array, ranges.toArray(CharPredicate[]::new));
+			}
+
+			if (negate) {
+				predicate = new CharPredicate.Not(predicate);
+			}
+
+			context.add(new CharProperty(predicate));
+		}
+
+		private void handleCaptureGroup() {
+			final var number = ++groupCount;
+
+			final var head = new GroupHead(number);
+			final var tail = new GroupTail(number);
+
+			final var previousContext = context;
+			context = new Context(null, tail);
+
+			while (peek() != ')') {
+				parseNext();
+			}
+			consume(); /* closing parenthesis */
+
+			context.end();
+			head.next = context.root;
+
+			context = previousContext;
+			context.current.next = head;
+			context.current = tail;
+			context.previous = head;
+		}
+
+		static class Context {
+
+			Node root;
+			Node current;
+			Node previous;
+			Node last;
+
+			private Context(Node root, Node last) {
+				this.root = root;
+				this.current = root;
+				this.last = last;
+			}
+
+			void add(Node node) {
+				if (root == null) {
+					root = node;
+					current = node;
+				} else {
+					previous = current;
+					previous.next = current = node;
+				}
+			}
+
+			void replace(Node node, Node last) {
+				current.next = last;
+				previous.next = current = node;
+			}
+
+			public void end() {
+				current.next = last;
+			}
+
+		}
+
 	}
 
 	static class Node {
@@ -157,6 +216,8 @@ public class Pattern {
 			for (; index <= to; ++index) {
 				if (next.match(matcher, index, sequence)) {
 					matcher.first = index;
+					matcher.groupStarts[0] = matcher.first;
+					matcher.groupEnds[0] = matcher.last;
 					return true;
 				}
 			}
@@ -291,6 +352,44 @@ public class Pattern {
 			}
 
 			return atom + "{" + min + "," + max + "}";
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class GroupHead extends Node {
+
+		final int number;
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			matcher.groupStarts[number] = index;
+
+			return next.match(matcher, index, sequence);
+		}
+
+		@Override
+		public String toString() {
+			return "(";
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class GroupTail extends Node {
+
+		final int number;
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			matcher.groupEnds[number] = index;
+
+			return next.match(matcher, index, sequence);
+		}
+
+		@Override
+		public String toString() {
+			return ")";
 		}
 
 	}

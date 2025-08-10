@@ -1,5 +1,6 @@
 package grep;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -119,6 +120,16 @@ class PatternTest {
 		final var pattern = Pattern.compile("d.g");
 
 		assertTrue(pattern.matcher("dog").find(0));
+	}
+
+	@Test
+	void capture() {
+		final var pattern = Pattern.compile("a(b.)de");
+		final var matcher = pattern.matcher("abcde");
+
+		assertTrue(matcher.find(0));
+		assertEquals("abcde", matcher.group(0));
+		assertEquals("bc", matcher.group(1));
 	}
 
 }

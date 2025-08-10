@@ -5,14 +5,18 @@ public class Matcher {
 	final Pattern pattern;
 	final CharSequence text;
 
+	final int groupStarts[], groupEnds[];
+
 	int first, last;
 	int from, to;
 	boolean hitEnd;
 
 	Matcher(Pattern pattern, CharSequence text) {
-		super();
 		this.pattern = pattern;
 		this.text = text;
+
+		this.groupStarts = new int[pattern.groupCount + 1];
+		this.groupEnds = new int[pattern.groupCount + 1];
 
 		reset();
 	}
@@ -30,6 +34,21 @@ public class Matcher {
 	public boolean find(int from) {
 		reset();
 		return search(from);
+	}
+
+	public String group() {
+		return group(0);
+	}
+
+	public String group(int group) {
+		final var start = groupStarts[group];
+		final var end = groupEnds[group];
+
+		return text.subSequence(start, end).toString();
+	}
+
+	public int groupCount() {
+		return pattern.groupCount;
 	}
 
 	boolean search(int from) {
