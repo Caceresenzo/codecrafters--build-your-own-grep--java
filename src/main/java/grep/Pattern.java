@@ -27,7 +27,8 @@ public class Pattern {
 
 	static class Parser {
 
-		private Context context = new Context(null, new Last());
+		private Node absoluteLast = new Last();
+		private Context context = new Context();
 
 		private String expression;
 		private int index = 0;
@@ -39,11 +40,76 @@ public class Pattern {
 		}
 
 		Pattern parse() {
+			final var contexts = new ArrayList<Context>();
+			contexts.add(context);
+
 			while (hasNext()) {
+				if (match('|')) {
+					context = new Context();
+					contexts.add(context);
+
+					// TODO Handle double pipes
+					continue;
+				}
+
 				parseNext();
 			}
 
-			context.end();
+			if (contexts.size() == 1) {
+				context.end(absoluteLast);
+			} else {
+				final var connector = new BranchConnector();
+				final var branch = new Branch(
+					contexts.stream().map((context) -> context.root).toList(),
+					connector
+				);
+
+				contexts.forEach((context) -> context.end(connector));
+
+				context = new Context();
+				context.root = branch;
+
+				connector.next = absoluteLast;
+			}
+
+			final var root = new Start();
+			root.next = context.root;
+
+			return new Pattern(root, groupCount);
+		}
+
+		Pattern parseExpression() {
+			final var contexts = new ArrayList<Context>();
+			contexts.add(context = new Context());
+
+			while (hasNext()) {
+				if (match('|')) {
+					context = new Context();
+					contexts.add(context);
+
+					// TODO Handle consecutive pipes, as context.root will be null
+					continue;
+				}
+
+				parseNext();
+			}
+
+			if (contexts.size() == 1) {
+				context.end(absoluteLast);
+			} else {
+				final var connector = new BranchConnector();
+				final var branch = new Branch(
+					contexts.stream().map((context) -> context.root).toList(),
+					connector
+				);
+
+				contexts.forEach((context) -> context.end(connector));
+
+				context = new Context();
+				context.root = branch;
+
+				connector.next = absoluteLast;
+			}
 
 			final var root = new Start();
 			root.next = context.root;
@@ -63,11 +129,11 @@ public class Pattern {
 				case '[' -> handleCharacterGroup();
 				case '^' -> context.add(new Begin());
 				case '$' -> context.add(new End());
-				case '+' -> context.replace(new Repeat(context.current, 1, Repeat.UNBOUNDED), context.last);
-				case '?' -> context.replace(new Repeat(context.current, 0, 1), context.last);
-				case '.' -> context.add(new CharProperty(new CharPredicate.Any()));
+				case '+' -> context.replace(new Repeat(context.current, 1, Repeat.UNBOUNDED));
+				case '?' -> context.replace(new Repeat(context.current, 0, 1));
+				case '.' -> context.add(new Char(new CharPredicate.Any()));
 				case '(' -> handleCaptureGroup();
-				default -> context.add(new CharProperty(new CharPredicate.Character(character)));
+				default -> context.add(new Char(new CharPredicate.Character(character)));
 			}
 
 			return true;
@@ -75,6 +141,15 @@ public class Pattern {
 
 		private char peek() {
 			return expression.charAt(index);
+		}
+
+		private boolean match(char character) {
+			if (peek() == character) {
+				consume();
+				return true;
+			}
+
+			return false;
 		}
 
 		private char consume() {
@@ -91,7 +166,7 @@ public class Pattern {
 				predicate = CharacterRangeClass.fromIdentifier(character);
 			}
 
-			context.add(new CharProperty(predicate));
+			context.add(new Char(predicate));
 		}
 
 		private void handleCharacterGroup() {
@@ -135,7 +210,7 @@ public class Pattern {
 				predicate = new CharPredicate.Not(predicate);
 			}
 
-			context.add(new CharProperty(predicate));
+			context.add(new Char(predicate));
 		}
 
 		private void handleCaptureGroup() {
@@ -145,14 +220,40 @@ public class Pattern {
 			final var tail = new GroupTail(number);
 
 			final var previousContext = context;
-			context = new Context(null, tail);
 
-			while (peek() != ')') {
+			final var contexts = new ArrayList<Context>();
+			contexts.add(context = new Context());
+
+			while (!match(')')) {
+				if (match('|')) {
+					context = new Context();
+					contexts.add(context);
+
+					// TODO Handle consecutive pipes, as context.root will be null
+					continue;
+				}
+				
 				parseNext();
 			}
-			consume(); /* closing parenthesis */
+			
 
-			context.end();
+			if (contexts.size() == 1) {
+				context.end(tail);
+			} else {
+				final var connector = new BranchConnector();
+				final var branch = new Branch(
+					contexts.stream().map((context) -> context.root).toList(),
+					connector
+				);
+
+				contexts.forEach((context) -> context.end(connector));
+
+				context = new Context();
+				context.root = branch;
+
+				connector.next = tail;
+			}
+
 			head.next = context.root;
 
 			context = previousContext;
@@ -166,13 +267,8 @@ public class Pattern {
 			Node root;
 			Node current;
 			Node previous;
-			Node last;
 
-			private Context(Node root, Node last) {
-				this.root = root;
-				this.current = root;
-				this.last = last;
-			}
+			final List<Node> toLinkToEnd = new ArrayList<>();
 
 			void add(Node node) {
 				if (root == null) {
@@ -184,13 +280,17 @@ public class Pattern {
 				}
 			}
 
-			void replace(Node node, Node last) {
-				current.next = last;
+			void replace(Node node) {
+				toLinkToEnd.add(current);
 				previous.next = current = node;
 			}
 
-			public void end() {
+			public void end(Node last) {
 				current.next = last;
+
+				for (final var node : toLinkToEnd) {
+					node.next = last;
+				}
 			}
 
 		}
@@ -234,7 +334,7 @@ public class Pattern {
 	}
 
 	@RequiredArgsConstructor
-	static class CharProperty extends Node {
+	static class Char extends Node {
 
 		final CharPredicate predicate;
 
@@ -320,9 +420,9 @@ public class Pattern {
 				index = matcher.last;
 			}
 
-			final var max = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
+			final var maxCount = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
 
-			while (index < matcher.to && count++ < max) {
+			while (index < matcher.to && count++ < maxCount) {
 				if (next.match(matcher, index, sequence)) {
 					return true;
 				}
@@ -390,6 +490,41 @@ public class Pattern {
 		@Override
 		public String toString() {
 			return ")";
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class Branch extends Node {
+
+		final List<Node> atoms;
+		final BranchConnector connector;
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			for (final var atom : atoms) {
+				if (atom.match(matcher, index, sequence)) {
+					matcher.first = index;
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		@Override
+		public String toString() {
+			return "|";
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class BranchConnector extends Node {
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			return next.match(matcher, index, sequence);
 		}
 
 	}

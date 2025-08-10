@@ -132,4 +132,13 @@ class PatternTest {
 		assertEquals("bc", matcher.group(1));
 	}
 
+	@Test
+	void branch() {
+		final var pattern = Pattern.compile("a(a|b)");
+
+		assertTrue(pattern.matcher("aa").find(0));
+		assertTrue(pattern.matcher("ab").find(0));
+		assertFalse(pattern.matcher("ac").find(0));
+	}
+
 }
