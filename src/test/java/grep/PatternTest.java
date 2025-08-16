@@ -132,4 +132,44 @@ class PatternTest {
 		assertEquals("bc", matcher.group(1));
 	}
 
+	@Test
+	void branch() {
+		final var pattern = Pattern.compile("a(a|b)");
+
+		assertTrue(pattern.matcher("aa").find(0));
+		assertTrue(pattern.matcher("ab").find(0));
+		assertFalse(pattern.matcher("ac").find(0));
+	}
+
+	@Test
+	void branchInner() {
+		final var pattern = Pattern.compile("^I see (\\d (cat|dog|cow)s?)$");
+
+		final var matcher = pattern.matcher("I see 1 cat");
+		assertTrue(matcher.find(0));
+		assertEquals("I see 1 cat", matcher.group(0));
+		assertEquals("1 cat", matcher.group(1));
+		assertEquals("cat", matcher.group(2));
+
+		assertTrue(pattern.matcher("I see 3 cats").find(0));
+		assertTrue(pattern.matcher("I see 1 dog").find(0));
+		assertTrue(pattern.matcher("I see 3 dogs").find(0));
+		assertTrue(pattern.matcher("I see 1 cow").find(0));
+		assertTrue(pattern.matcher("I see 3 cows").find(0));
+		assertFalse(pattern.matcher("I see 1 rabbit").find(0));
+	}
+
+	@Test
+	void branchInnerWithQuantifier() {
+		final var pattern = Pattern.compile("^I see (\\d (cat|dog|cow)s?(, | and )?)+$");
+		// pattern.debug();
+
+		final var matcher = pattern.matcher("I see 1 cat, 2 dogs and 3 cows");
+		assertTrue(matcher.find(0));
+		assertEquals("I see 1 cat, 2 dogs and 3 cows", matcher.group(0));
+		assertEquals("3 cows", matcher.group(1));
+		assertEquals("cow", matcher.group(2));
+		assertEquals(" and ", matcher.group(3));
+	}
+
 }

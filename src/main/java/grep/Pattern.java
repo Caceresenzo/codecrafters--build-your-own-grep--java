@@ -21,13 +21,18 @@ public class Pattern {
 		return new Matcher(this, sequence);
 	}
 
+	public void debug() {
+		new Printer(root).print();
+	}
+
 	public static Pattern compile(String expression) {
 		return new Parser(expression).parse();
 	}
 
 	static class Parser {
 
-		private Context context = new Context(null, new Last());
+		private Node absoluteLast = new Last();
+		private Context context = new Context();
 
 		private String expression;
 		private int index = 0;
@@ -39,14 +44,23 @@ public class Pattern {
 		}
 
 		Pattern parse() {
+			final var contexts = new ArrayList<Context>();
+			contexts.add(context);
+
 			while (hasNext()) {
+				if (match('|')) {
+					context = new Context();
+					contexts.add(context);
+
+					// TODO Handle double pipes
+					continue;
+				}
+
 				parseNext();
 			}
 
-			context.end();
-
 			final var root = new Start();
-			root.next = context.root;
+			root.next = toBranchIfNecessary(contexts, absoluteLast);
 
 			return new Pattern(root, groupCount);
 		}
@@ -63,11 +77,11 @@ public class Pattern {
 				case '[' -> handleCharacterGroup();
 				case '^' -> context.add(new Begin());
 				case '$' -> context.add(new End());
-				case '+' -> context.replace(new Repeat(context.current, 1, Repeat.UNBOUNDED), context.last);
-				case '?' -> context.replace(new Repeat(context.current, 0, 1), context.last);
-				case '.' -> context.add(new CharProperty(new CharPredicate.Any()));
+				case '+' -> context.replace(new Repeat(context.current, 1, Repeat.UNBOUNDED));
+				case '?' -> context.replace(new LazyRepeat(context.current, 0, 1));
+				case '.' -> context.add(new Char(new CharPredicate.Any()));
 				case '(' -> handleCaptureGroup();
-				default -> context.add(new CharProperty(new CharPredicate.Character(character)));
+				default -> context.add(new Char(new CharPredicate.Character(character)));
 			}
 
 			return true;
@@ -75,6 +89,15 @@ public class Pattern {
 
 		private char peek() {
 			return expression.charAt(index);
+		}
+
+		private boolean match(char character) {
+			if (peek() == character) {
+				consume();
+				return true;
+			}
+
+			return false;
 		}
 
 		private char consume() {
@@ -91,7 +114,7 @@ public class Pattern {
 				predicate = CharacterRangeClass.fromIdentifier(character);
 			}
 
-			context.add(new CharProperty(predicate));
+			context.add(new Char(predicate));
 		}
 
 		private void handleCharacterGroup() {
@@ -135,30 +158,53 @@ public class Pattern {
 				predicate = new CharPredicate.Not(predicate);
 			}
 
-			context.add(new CharProperty(predicate));
+			context.add(new Char(predicate));
 		}
 
 		private void handleCaptureGroup() {
 			final var number = ++groupCount;
 
-			final var head = new GroupHead(number);
-			final var tail = new GroupTail(number);
-
 			final var previousContext = context;
-			context = new Context(null, tail);
 
-			while (peek() != ')') {
+			final var contexts = new ArrayList<Context>();
+			contexts.add(context = new Context());
+
+			while (!match(')')) {
+				if (match('|')) {
+					context = new Context();
+					contexts.add(context);
+
+					// TODO Handle consecutive pipes, as context.root will be null
+					continue;
+				}
+
 				parseNext();
 			}
-			consume(); /* closing parenthesis */
 
-			context.end();
-			head.next = context.root;
+			final var root = toBranchIfNecessary(contexts, new Last());
+			final var group = new Group(number, root);
 
 			context = previousContext;
-			context.current.next = head;
-			context.current = tail;
-			context.previous = head;
+			context.add(group);
+		}
+
+		private Node toBranchIfNecessary(List<Context> contexts, Node last) {
+			if (contexts.size() == 1) {
+				context.end(last);
+				return context.root;
+			} else {
+				final var roots = new ArrayList<Node>(contexts.size());
+
+				for (final var context : contexts) {
+					context.end(last);
+					roots.add(context.root);
+				}
+
+				final var branch = new Branch(roots);
+				branch.next = last;
+
+				return branch;
+			}
 		}
 
 		static class Context {
@@ -166,13 +212,8 @@ public class Pattern {
 			Node root;
 			Node current;
 			Node previous;
-			Node last;
 
-			private Context(Node root, Node last) {
-				this.root = root;
-				this.current = root;
-				this.last = last;
-			}
+			final List<Node> toLinkToEnd = new ArrayList<>();
 
 			void add(Node node) {
 				if (root == null) {
@@ -184,15 +225,98 @@ public class Pattern {
 				}
 			}
 
-			void replace(Node node, Node last) {
-				current.next = last;
+			void replace(Node node) {
+				toLinkToEnd.add(current);
 				previous.next = current = node;
 			}
 
-			public void end() {
+			public void end(Node last) {
 				current.next = last;
+
+				for (final var node : toLinkToEnd) {
+					node.next = last;
+				}
 			}
 
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class Printer {
+
+		private int index;
+		private int depth = 1;
+		private final Node root;
+
+		public void print() {
+			printNode(root);
+		}
+
+		private void printNode(Node node) {
+			if (node == null) {
+				return;
+			}
+
+			final var indent = "%3d: ".formatted(index) + "  ".repeat(depth);
+			final var blankIndent = "     " + "  ".repeat(depth);
+			++index;
+
+			if (node instanceof Start start) {
+				System.out.println(indent + "<Start>");
+
+				printNode(start.next);
+			} else if (node instanceof Char char_) {
+				System.out.println(indent + "<Char `" + char_.predicate + "`>");
+
+				printNode(char_.next);
+			} else if (node instanceof Begin begin) {
+				System.out.println(indent + "<Begin>");
+
+				printNode(begin.next);
+			} else if (node instanceof End end) {
+				System.out.println(indent + "<End>");
+
+				printNode(end.next);
+			} else if (node instanceof Repeat repeat) {
+				System.out.println(indent + "<Repeat " + repeat + ">");
+
+				++depth;
+				printNode(repeat.atom);
+				--depth;
+
+				System.out.println(blankIndent + "</Repeat>");
+
+				printNode(repeat.next);
+			} else if (node instanceof Group group) {
+				System.out.println(indent + "<Group " + group.number + ">");
+
+				++depth;
+				printNode(group.atom);
+				--depth;
+
+				System.out.println(blankIndent + "</Group " + group.number + ">");
+
+				printNode(group.next);
+			} else if (node instanceof Branch branch) {
+				System.out.println(indent + "<Branch>");
+
+				++depth;
+				for (var index = 0; index < branch.atoms.size(); ++index) {
+					if (index > 0) {
+						System.out.println(blankIndent + "---");
+					}
+
+					printNode(branch.atoms.get(index));
+				}
+				--depth;
+
+				System.out.println(blankIndent + "</Branch>");
+
+				printNode(branch.next);
+			} else if (node instanceof Last) {
+				System.out.println(indent + "<Last>");
+			}
 		}
 
 	}
@@ -234,7 +358,7 @@ public class Pattern {
 	}
 
 	@RequiredArgsConstructor
-	static class CharProperty extends Node {
+	static class Char extends Node {
 
 		final CharPredicate predicate;
 
@@ -244,7 +368,8 @@ public class Pattern {
 				char value = sequence.charAt(index);
 
 				// TODO currently only support ascii
-				return predicate.test(value) && next.match(matcher, index + 1, sequence);
+				return predicate.test(value)
+					&& next.match(matcher, index + 1, sequence);
 			}
 
 			matcher.hitEnd = true;
@@ -320,9 +445,13 @@ public class Pattern {
 				index = matcher.last;
 			}
 
-			final var max = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
+			return matchMax(matcher, index, sequence, count);
+		}
 
-			while (index < matcher.to && count++ < max) {
+		public boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count) {
+			final var maxCount = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
+
+			while (index < matcher.to && count++ < maxCount) {
 				if (next.match(matcher, index, sequence)) {
 					return true;
 				}
@@ -339,57 +468,108 @@ public class Pattern {
 
 		@Override
 		public String toString() {
-			if (min == 0 && max == UNBOUNDED) {
-				return atom + "*";
+			if (min == 0 && max == 1) {
+				return "?";
+			} else if (min == 0 && max == UNBOUNDED) {
+				return "*";
 			} else if (min == 1 && max == UNBOUNDED) {
-				return atom + "+";
+				return "+";
 			} else if (max == UNBOUNDED) {
-				return atom + "{" + min + ",}";
+				return "{" + min + ",}";
 			} else if (min == UNBOUNDED) {
-				return atom + "{," + max + "}";
+				return "{," + max + "}";
 			} else if (min == max) {
-				return atom + "{" + min + "}";
+				return "{" + min + "}";
 			}
 
-			return atom + "{" + min + "," + max + "}";
+			return "{" + min + "," + max + "}";
+		}
+
+	}
+
+	static class LazyRepeat extends Repeat {
+
+		public LazyRepeat(Node atom, int min, int max) {
+			super(atom, min, max);
+		}
+
+		@Override
+		public boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count) {
+			final var maxCount = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
+
+			while (index < matcher.to && count++ < maxCount) {
+				if (!atom.match(matcher, index, sequence)) {
+					break;
+				}
+
+				index = matcher.last;
+
+				if (next.match(matcher, index, sequence)) {
+					return true;
+				}
+			}
+
+			return next.match(matcher, index, sequence);
 		}
 
 	}
 
 	@RequiredArgsConstructor
-	static class GroupHead extends Node {
+	static class Group extends Node {
 
 		final int number;
+		final Node atom;
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
 			matcher.groupStarts[number] = index;
 
-			return next.match(matcher, index, sequence);
+			if (!atom.match(matcher, index, sequence)) {
+				matcher.groupStarts[number] = -1;
+				return false;
+			}
+
+			final var endIndex = matcher.groupEnds[number] = matcher.last;
+
+			if (!next.match(matcher, endIndex, sequence)) {
+				matcher.groupStarts[number] = -1;
+				matcher.groupEnds[number] = -1;
+				return false;
+			}
+
+			return true;
 		}
 
 		@Override
 		public String toString() {
-			return "(";
+			return "Group(" + number + ")";
 		}
 
 	}
 
 	@RequiredArgsConstructor
-	static class GroupTail extends Node {
+	static class Branch extends Node {
 
-		final int number;
+		final List<Node> atoms;
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
-			matcher.groupEnds[number] = index;
+			for (final var atom : atoms) {
+				if (atom.match(matcher, index, sequence)) {
+					final var endIndex = matcher.last;
 
-			return next.match(matcher, index, sequence);
+					if (next.match(matcher, endIndex, sequence)) {
+						return true;
+					}
+				}
+			}
+
+			return false;
 		}
 
 		@Override
 		public String toString() {
-			return ")";
+			return "|";
 		}
 
 	}
@@ -523,10 +703,7 @@ public class Pattern {
 
 			@Override
 			public boolean test(char character) {
-				return (character >= '0' && character <= '9')
-					|| (character >= 'a' && character <= 'z')
-					|| (character >= 'A' && character <= 'Z')
-					|| (character == '_');
+				return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character == '_');
 			}
 
 		};
