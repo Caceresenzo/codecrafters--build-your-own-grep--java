@@ -107,14 +107,14 @@ public class Pattern {
 		private void handleEscape() {
 			final var character = consume();
 
-			CharPredicate predicate;
 			if (character == '\\') {
-				predicate = new CharPredicate.Character(character);
+				context.add(new Char(character));
+			} else if (Character.isDigit(character)) {
+				context.add(new BackReference(character - '0'));
 			} else {
-				predicate = CharacterRangeClass.fromIdentifier(character);
+				final var predicate = CharacterRangeClass.fromIdentifier(character);
+				context.add(new Char(predicate));
 			}
-
-			context.add(new Char(predicate));
 		}
 
 		private void handleCharacterGroup() {
@@ -314,6 +314,10 @@ public class Pattern {
 				System.out.println(blankIndent + "</Branch>");
 
 				printNode(branch.next);
+			} else if (node instanceof BackReference backReference) {
+				System.out.println(indent + "<BackReference " + backReference.groupNumber + ">");
+
+				printNode(backReference.next);
 			} else if (node instanceof Last) {
 				System.out.println(indent + "<Last>");
 			}
@@ -361,6 +365,10 @@ public class Pattern {
 	static class Char extends Node {
 
 		final CharPredicate predicate;
+
+		public Char(char value) {
+			this(new CharPredicate.Character(value));
+		}
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
@@ -570,6 +578,45 @@ public class Pattern {
 		@Override
 		public String toString() {
 			return "|";
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class BackReference extends Node {
+
+		final int groupNumber;
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			final var start = matcher.groupStarts[groupNumber];
+			final var end = matcher.groupEnds[groupNumber];
+
+			final var length = end - start;
+
+			/* group not matched */
+			if (length < 0) {
+				return false;
+			}
+
+			/* not enough characters left */
+			if (index + length > matcher.to) {
+				matcher.hitEnd = true;
+				return false;
+			}
+
+			for (var jndex = 0; jndex < length; ++jndex) {
+				if (sequence.charAt(start + jndex) != sequence.charAt(index + jndex)) {
+					return false;
+				}
+			}
+
+			return next.match(matcher, index + length, sequence);
+		}
+
+		@Override
+		public String toString() {
+			return "\\" + groupNumber + "";
 		}
 
 	}
