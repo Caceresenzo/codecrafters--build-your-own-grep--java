@@ -77,7 +77,7 @@ public class Pattern {
 				case '[' -> handleCharacterGroup();
 				case '^' -> context.add(new Begin());
 				case '$' -> context.add(new End());
-				case '+' -> context.replace(new Repeat(context.current, 1, Repeat.UNBOUNDED));
+				case '+' -> context.replace(new GreedyRepeat(context.current, 1, Repeat.UNBOUNDED));
 				case '?' -> context.replace(new LazyRepeat(context.current, 0, 1));
 				case '.' -> context.add(new Char(new CharPredicate.Any()));
 				case '(' -> handleCaptureGroup();
@@ -107,14 +107,14 @@ public class Pattern {
 		private void handleEscape() {
 			final var character = consume();
 
-			CharPredicate predicate;
 			if (character == '\\') {
-				predicate = new CharPredicate.Character(character);
+				context.add(new Char(new CharPredicate.Character(character)));
+			} else if (Character.isDigit(character)) {
+				context.add(new BackReference(character - '0'));
 			} else {
-				predicate = CharacterRangeClass.fromIdentifier(character);
+				final var predicate = CharacterRangeClass.fromIdentifier(character);
+				context.add(new Char(predicate));
 			}
-
-			context.add(new Char(predicate));
 		}
 
 		private void handleCharacterGroup() {
@@ -227,7 +227,12 @@ public class Pattern {
 
 			void replace(Node node) {
 				toLinkToEnd.add(current);
-				previous.next = current = node;
+
+				if (previous == null) {
+					root = current = node;
+				} else {
+					previous.next = current = node;
+				}
 			}
 
 			public void end(Node last) {
@@ -314,6 +319,10 @@ public class Pattern {
 				System.out.println(blankIndent + "</Branch>");
 
 				printNode(branch.next);
+			} else if (node instanceof BackReference backReference) {
+				System.out.println(indent + "<BackReference " + backReference.groupNumber + ">");
+
+				printNode(backReference.next);
 			} else if (node instanceof Last) {
 				System.out.println(indent + "<Last>");
 			}
@@ -364,16 +373,16 @@ public class Pattern {
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
-			if (index < matcher.to) {
-				char value = sequence.charAt(index);
-
-				// TODO currently only support ascii
-				return predicate.test(value)
-					&& next.match(matcher, index + 1, sequence);
+			if (index >= matcher.to) {
+				matcher.hitEnd = true;
+				return false;
 			}
 
-			matcher.hitEnd = true;
-			return false;
+			char value = sequence.charAt(index);
+
+			// TODO currently only support ascii
+			return predicate.test(value)
+				&& next.match(matcher, index + 1, sequence);
 		}
 
 		@Override
@@ -426,7 +435,7 @@ public class Pattern {
 	}
 
 	@RequiredArgsConstructor
-	static class Repeat extends Node {
+	static abstract class Repeat extends Node {
 
 		static final int UNBOUNDED = -1;
 
@@ -445,26 +454,12 @@ public class Pattern {
 				index = matcher.last;
 			}
 
-			return matchMax(matcher, index, sequence, count);
-		}
-
-		public boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count) {
 			final var maxCount = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
 
-			while (index < matcher.to && count++ < maxCount) {
-				if (next.match(matcher, index, sequence)) {
-					return true;
-				}
-
-				if (!atom.match(matcher, index, sequence)) {
-					break;
-				}
-
-				index = matcher.last;
-			}
-
-			return next.match(matcher, index, sequence);
+			return matchMax(matcher, index, sequence, count, maxCount);
 		}
+
+		public abstract boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount);
 
 		@Override
 		public String toString() {
@@ -487,6 +482,30 @@ public class Pattern {
 
 	}
 
+	static class GreedyRepeat extends Repeat {
+
+		public GreedyRepeat(Node atom, int min, int max) {
+			super(atom, min, max);
+		}
+
+		public final boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount) {
+			if (index < matcher.to && count++ < maxCount && atom.match(matcher, index, sequence)) {
+				index = matcher.last;
+
+				if (matchMax(matcher, index, sequence, count, maxCount)) {
+					return true;
+				}
+
+				if (next.match(matcher, index, sequence)) {
+					return true;
+				}
+			}
+
+			return next.match(matcher, index, sequence);
+		}
+
+	}
+
 	static class LazyRepeat extends Repeat {
 
 		public LazyRepeat(Node atom, int min, int max) {
@@ -494,9 +513,7 @@ public class Pattern {
 		}
 
 		@Override
-		public boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count) {
-			final var maxCount = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
-
+		public final boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount) {
 			while (index < matcher.to && count++ < maxCount) {
 				if (!atom.match(matcher, index, sequence)) {
 					break;
@@ -570,6 +587,45 @@ public class Pattern {
 		@Override
 		public String toString() {
 			return "|";
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class BackReference extends Node {
+
+		final int groupNumber;
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			final var start = matcher.groupStarts[groupNumber];
+			final var end = matcher.groupEnds[groupNumber];
+
+			final var length = end - start;
+
+			/* group not matched */
+			if (length < 0) {
+				return false;
+			}
+
+			/* not enough characters left */
+			if (index + length > matcher.to) {
+				matcher.hitEnd = true;
+				return false;
+			}
+
+			for (var jndex = 0; jndex < length; ++jndex) {
+				if (sequence.charAt(start + jndex) != sequence.charAt(index + jndex)) {
+					return false;
+				}
+			}
+
+			return next.match(matcher, index + length, sequence);
+		}
+
+		@Override
+		public String toString() {
+			return "\\" + groupNumber + "";
 		}
 
 	}
