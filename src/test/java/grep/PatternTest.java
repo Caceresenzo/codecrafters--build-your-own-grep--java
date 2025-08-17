@@ -187,4 +187,13 @@ class PatternTest {
 		assertTrue(pattern.matcher("abcd is abcd").find(0));
 	}
 
+	@Test
+	void multipleBackReference() {
+		final var pattern = Pattern.compile("(\\d+) (\\w+) squares and \\1 \\2 circles");
+		pattern.debug();
+
+		assertTrue(pattern.matcher("3 red squares and 3 red circles").find(0));
+		assertFalse(pattern.matcher("3 red squares and 4 red circles").find(0));
+	}
+
 }
