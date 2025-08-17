@@ -133,6 +133,13 @@ class PatternTest {
 	}
 
 	@Test
+	void captureWithBacktrack() {
+		final var pattern = Pattern.compile("_([^a]+),");
+
+		assertTrue(pattern.matcher("_bbb, c").find(0));
+	}
+
+	@Test
 	void branch() {
 		final var pattern = Pattern.compile("a(a|b)");
 
@@ -182,7 +189,6 @@ class PatternTest {
 	@Test
 	void backReferencePattern() {
 		final var pattern = Pattern.compile("([abcd]+) is \\1");
-		pattern.debug();
 
 		assertTrue(pattern.matcher("abcd is abcd").find(0));
 	}
@@ -190,10 +196,28 @@ class PatternTest {
 	@Test
 	void multipleBackReference() {
 		final var pattern = Pattern.compile("(\\d+) (\\w+) squares and \\1 \\2 circles");
-		pattern.debug();
 
 		assertTrue(pattern.matcher("3 red squares and 3 red circles").find(0));
 		assertFalse(pattern.matcher("3 red squares and 4 red circles").find(0));
+	}
+
+	@Test
+	void nestedBackReference() {
+		final var pattern = Pattern.compile("('(cat) and \\2') is the same as \\1");
+
+		assertTrue(pattern.matcher("'cat and cat' is the same as 'cat and cat'").find(0));
+	}
+
+	@Test
+	void nestedBackReference2() {
+		final var pattern = Pattern.compile("((c.t|d.g) and (f..h|b..d)), \\2 with \\3, \\1");
+		final var matcher = pattern.matcher("cat and fish, cat with fish, cat and fish");
+
+		assertTrue(matcher.find(0));
+		assertEquals("cat and fish, cat with fish, cat and fish", matcher.group(0));
+		assertEquals("cat and fish", matcher.group(1));
+		assertEquals("cat", matcher.group(2));
+		assertEquals("fish", matcher.group(3));
 	}
 
 }
