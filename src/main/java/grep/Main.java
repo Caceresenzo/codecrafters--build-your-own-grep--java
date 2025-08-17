@@ -2,8 +2,6 @@ package grep;
 
 import java.util.Scanner;
 
-import lombok.Cleanup;
-
 public class Main {
 
 	public static void main(String[] args) {
@@ -14,17 +12,20 @@ public class Main {
 
 		String patternString = args[1];
 
-		@Cleanup
-		Scanner scanner = new Scanner(System.in);
-		String inputLine = scanner.nextLine();
+		try (final var scanner = new Scanner(System.in)) {
+			String inputLine = scanner.nextLine();
 
-		final var pattern = Pattern.compile(patternString);
-		final var matcher = pattern.matcher(inputLine);
+			final var pattern = Pattern.compile(patternString);
+			final var matcher = pattern.matcher(inputLine);
 
-		if (matcher.find(0)) {
-			System.exit(0);
-		} else {
-			System.exit(1);
+			if (matcher.find(0)) {
+				System.exit(0);
+			} else {
+				System.exit(1);
+			}
+		} catch (Exception exception) {
+			exception.printStackTrace();
+			System.exit(2);
 		}
 	}
 

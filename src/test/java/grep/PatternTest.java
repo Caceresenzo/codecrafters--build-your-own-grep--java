@@ -162,7 +162,6 @@ class PatternTest {
 	@Test
 	void branchInnerWithQuantifier() {
 		final var pattern = Pattern.compile("^I see (\\d (cat|dog|cow)s?(, | and )?)+$");
-		// pattern.debug();
 
 		final var matcher = pattern.matcher("I see 1 cat, 2 dogs and 3 cows");
 		assertTrue(matcher.find(0));
@@ -170,6 +169,22 @@ class PatternTest {
 		assertEquals("3 cows", matcher.group(1));
 		assertEquals("cow", matcher.group(2));
 		assertEquals(" and ", matcher.group(3));
+	}
+
+	@Test
+	void backReferenceStatic() {
+		final var pattern = Pattern.compile("(cat) and \\1");
+
+		assertTrue(pattern.matcher("cat and cat").find(0));
+		assertFalse(pattern.matcher("cat and dog").find(0));
+	}
+
+	@Test
+	void backReferencePattern() {
+		final var pattern = Pattern.compile("([abcd]+) is \\1");
+		pattern.debug();
+
+		assertTrue(pattern.matcher("abcd is abcd").find(0));
 	}
 
 }
