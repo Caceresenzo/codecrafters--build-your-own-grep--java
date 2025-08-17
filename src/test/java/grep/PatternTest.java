@@ -182,7 +182,6 @@ class PatternTest {
 	@Test
 	void backReferencePattern() {
 		final var pattern = Pattern.compile("([abcd]+) is \\1");
-		pattern.debug();
 
 		assertTrue(pattern.matcher("abcd is abcd").find(0));
 	}
@@ -190,10 +189,17 @@ class PatternTest {
 	@Test
 	void multipleBackReference() {
 		final var pattern = Pattern.compile("(\\d+) (\\w+) squares and \\1 \\2 circles");
-		pattern.debug();
 
 		assertTrue(pattern.matcher("3 red squares and 3 red circles").find(0));
 		assertFalse(pattern.matcher("3 red squares and 4 red circles").find(0));
+	}
+
+	@Test
+	void nestedBackReference() {
+		final var pattern = Pattern.compile("('(cat) and \\2') is the same as \\1");
+		pattern.debug();
+
+		assertTrue(pattern.matcher("'cat and cat' is the same as 'cat and cat'").find(0));
 	}
 
 }
