@@ -523,7 +523,11 @@ public class Pattern {
 
 			final var maxCount = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
 
-			return matchMax(matcher, index, sequence, count, maxCount);
+			if (matchMax(matcher, index, sequence, count, maxCount)) {
+				return true;
+			}
+
+			return next.match(matcher, index, sequence);
 		}
 
 		public boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount) {
