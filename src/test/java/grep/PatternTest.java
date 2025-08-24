@@ -227,5 +227,13 @@ class PatternTest {
 		assertEquals("cat", matcher.group(2));
 		assertEquals("fish", matcher.group(3));
 	}
+	
+	@Test
+	void anyPlusAtStart() {
+		final var pattern = Pattern.compile(".+ar");
+		final var matcher = pattern.matcher("carx");
+		
+		assertTrue(matcher.find(0));
+	}
 
 }

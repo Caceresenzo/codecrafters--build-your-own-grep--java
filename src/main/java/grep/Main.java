@@ -1,5 +1,6 @@
 package grep;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.util.Scanner;
 
@@ -20,9 +21,12 @@ public class Main {
 		final var extendedRegexpOption = new Option("E", "extended-regexp", false, "PATTERNS are extended regular expressions");
 		extendedRegexpOption.setRequired(true);
 
+		final var recurseOption = new Option("r", "recursive", false, "how to handle directories recursively;");
+
 		final var options = new Options();
 		options.addOption(helpOption);
 		options.addOption(extendedRegexpOption);
+		options.addOption(recurseOption);
 
 		final CommandLine commandLine;
 
@@ -59,10 +63,11 @@ public class Main {
 			if (filePaths.isEmpty()) {
 				found = findFromStdin(pattern);
 			} else {
-				final var printFileName = filePaths.size() > 1;
+				final var recurse = commandLine.hasOption(recurseOption);
+				final var printFileName = recurse || filePaths.size() > 1;
 
 				for (final var filePath : filePaths) {
-					found |= findFromFile(pattern, filePath, printFileName);
+					found |= findFromFile(pattern, filePath, recurse, printFileName);
 				}
 			}
 		} catch (Exception exception) {
@@ -89,21 +94,34 @@ public class Main {
 	}
 
 	@SneakyThrows
-	static boolean findFromFile(Pattern pattern, String filePath, boolean printFileName) {
+	static boolean findFromFile(Pattern pattern, String filePath, boolean recurse, boolean printFileName) {
 		var found = false;
 
-		try (
-			final var fileInputStream = new FileInputStream(filePath);
-			final var scanner = new Scanner(fileInputStream)
-		) {
-			if (!printFileName) {
-				filePath = null;
+		final var file = new File(filePath);
+		if (file.isDirectory()) {
+			if (!recurse) {
+				return false;
 			}
 
-			while (scanner.hasNextLine()) {
-				final var inputLine = scanner.nextLine();
+			for (final var innerFile : file.listFiles()) {
+				final var innerRelativeFilePath = new File(file, innerFile.getName()).toPath().normalize().toString();
 
-				found |= handleMatcher(pattern, inputLine, filePath);
+				found |= findFromFile(pattern, innerRelativeFilePath, recurse, printFileName);
+			}
+		} else {
+			try (
+				final var fileInputStream = new FileInputStream(filePath);
+				final var scanner = new Scanner(fileInputStream)
+			) {
+				if (!printFileName) {
+					filePath = null;
+				}
+
+				while (scanner.hasNextLine()) {
+					final var inputLine = scanner.nextLine();
+
+					found |= handleMatcher(pattern, inputLine, filePath);
+				}
 			}
 		}
 
@@ -114,7 +132,7 @@ public class Main {
 		final var matcher = pattern.matcher(inputLine);
 
 		if (matcher.find(0)) {
-			var message = matcher.group();
+			var message = inputLine;
 			if (filePath != null) {
 				message = "%s:%s".formatted(filePath, message);
 			}
