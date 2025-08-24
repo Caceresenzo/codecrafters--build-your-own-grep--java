@@ -59,8 +59,10 @@ public class Main {
 			if (filePaths.isEmpty()) {
 				found = findFromStdin(pattern);
 			} else {
+				final var printFileName = filePaths.size() > 1;
+
 				for (final var filePath : filePaths) {
-					found |= findFromFile(pattern, filePath);
+					found |= findFromFile(pattern, filePath, printFileName);
 				}
 			}
 		} catch (Exception exception) {
@@ -82,33 +84,42 @@ public class Main {
 		) {
 			final var inputLine = scanner.nextLine();
 
-			return handleMatcher(pattern, inputLine);
+			return handleMatcher(pattern, inputLine, null);
 		}
 	}
 
 	@SneakyThrows
-	static boolean findFromFile(Pattern pattern, String filePath) {
+	static boolean findFromFile(Pattern pattern, String filePath, boolean printFileName) {
 		var found = false;
 
 		try (
 			final var fileInputStream = new FileInputStream(filePath);
 			final var scanner = new Scanner(fileInputStream)
 		) {
+			if (!printFileName) {
+				filePath = null;
+			}
+
 			while (scanner.hasNextLine()) {
 				final var inputLine = scanner.nextLine();
 
-				found |= handleMatcher(pattern, inputLine);
+				found |= handleMatcher(pattern, inputLine, filePath);
 			}
 		}
 
 		return found;
 	}
 
-	static boolean handleMatcher(Pattern pattern, String inputLine) {
+	static boolean handleMatcher(Pattern pattern, String inputLine, String filePath) {
 		final var matcher = pattern.matcher(inputLine);
 
 		if (matcher.find(0)) {
-			System.out.println(matcher.group());
+			var message = matcher.group();
+			if (filePath != null) {
+				message = "%s:%s".formatted(filePath, message);
+			}
+
+			System.out.println(message);
 			return true;
 		}
 
