@@ -125,6 +125,7 @@ class PatternTest {
 	@Test
 	void capture() {
 		final var pattern = Pattern.compile("a(b.)de");
+		pattern.debug();
 		final var matcher = pattern.matcher("abcde");
 
 		assertTrue(matcher.find(0));
@@ -162,6 +163,7 @@ class PatternTest {
 	@Test
 	void branchInnerWithQuantifier() {
 		final var pattern = Pattern.compile("^I see (\\d (cat|dog|cow)s?(, | and )?)+$");
+		pattern.debug();
 
 		final var matcher = pattern.matcher("I see 1 cat, 2 dogs and 3 cows");
 		assertTrue(matcher.find(0));
@@ -189,6 +191,7 @@ class PatternTest {
 	@Test
 	void multipleBackReference() {
 		final var pattern = Pattern.compile("(\\d+) (\\w+) squares and \\1 \\2 circles");
+		pattern.debug();
 
 		assertTrue(pattern.matcher("3 red squares and 3 red circles").find(0));
 		assertFalse(pattern.matcher("3 red squares and 4 red circles").find(0));
@@ -197,9 +200,16 @@ class PatternTest {
 	@Test
 	void nestedBackReference() {
 		final var pattern = Pattern.compile("('(cat) and \\2') is the same as \\1");
-		pattern.debug();
 
 		assertTrue(pattern.matcher("'cat and cat' is the same as 'cat and cat'").find(0));
+	}
+
+	@Test
+	void nestedBackReference3() {
+		final var pattern = Pattern.compile("_([^a]+),");
+		pattern.debug();
+
+		assertTrue(pattern.matcher("_bbb, c").find(0));
 	}
 
 }

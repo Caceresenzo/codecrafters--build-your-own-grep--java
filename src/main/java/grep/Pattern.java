@@ -60,7 +60,7 @@ public class Pattern {
 			}
 
 			final var root = new Start();
-			root.next = toBranchIfNecessary(contexts, absoluteLast);
+			root.next = toBranchIfNecessary(contexts, absoluteLast, absoluteLast);
 
 			return new Pattern(root, groupCount);
 		}
@@ -88,6 +88,10 @@ public class Pattern {
 		}
 
 		private char peek() {
+			if (index >= expression.length()) {
+				return '\0';
+			}
+
 			return expression.charAt(index);
 		}
 
@@ -181,22 +185,38 @@ public class Pattern {
 				parseNext();
 			}
 
-			final var root = toBranchIfNecessary(contexts, new Last());
-			final var group = new Group(number, root);
+			final var tail = new GroupTail(number);
+			final var head = new GroupHead(number, tail);
+
+			final var root = toBranchIfNecessary(contexts, tail, new Last());
+			head.next = root;
 
 			context = previousContext;
-			context.add(group);
+
+			if (match('+')) {
+				final var node = new GreedyRepeat(head, 1, Repeat.UNBOUNDED);
+				tail.next = new Last();
+
+				context.add(node);
+			} else if (match('?')) {
+				final var node = new GreedyRepeat(head, 0, 1);
+				tail.next = new Last();
+
+				context.add(node);
+			} else {
+				context.add(head, tail);
+			}
 		}
 
-		private Node toBranchIfNecessary(List<Context> contexts, Node last) {
+		private Node toBranchIfNecessary(List<Context> contexts, Node last, Node intermediateLast) {
 			if (contexts.size() == 1) {
-				context.end(last);
+				context.end(last, intermediateLast);
 				return context.root;
 			} else {
 				final var roots = new ArrayList<Node>(contexts.size());
 
 				for (final var context : contexts) {
-					context.end(last);
+					context.end(intermediateLast, intermediateLast);
 					roots.add(context.root);
 				}
 
@@ -225,6 +245,17 @@ public class Pattern {
 				}
 			}
 
+			void add(Node head, Node tail) {
+				if (root == null) {
+					root = head;
+					current = tail;
+				} else {
+					previous = current;
+					previous.next = head;
+					current = tail;
+				}
+			}
+
 			void replace(Node node) {
 				toLinkToEnd.add(current);
 
@@ -235,12 +266,12 @@ public class Pattern {
 				}
 			}
 
-			public void end(Node last) {
-				current.next = last;
-
+			public void end(Node last, Node intermediateLast) {
 				for (final var node : toLinkToEnd) {
-					node.next = last;
+					node.next = intermediateLast;
 				}
+
+				current.next = last;
 			}
 
 		}
@@ -293,16 +324,14 @@ public class Pattern {
 				System.out.println(blankIndent + "</Repeat>");
 
 				printNode(repeat.next);
-			} else if (node instanceof Group group) {
-				System.out.println(indent + "<Group " + group.number + ">");
+			} else if (node instanceof GroupHead groupHead) {
+				System.out.println(indent + "<Group.head " + groupHead.number + ">");
 
-				++depth;
-				printNode(group.atom);
-				--depth;
+				printNode(groupHead.next);
+			} else if (node instanceof GroupTail groupTail) {
+				System.out.println(indent + "<Group.tail " + groupTail.number + ">");
 
-				System.out.println(blankIndent + "</Group " + group.number + ">");
-
-				printNode(group.next);
+				printNode(groupTail.next);
 			} else if (node instanceof Branch branch) {
 				System.out.println(indent + "<Branch>");
 
@@ -435,7 +464,7 @@ public class Pattern {
 	}
 
 	@RequiredArgsConstructor
-	static abstract class Repeat extends Node {
+	abstract static class Repeat extends Node {
 
 		static final int UNBOUNDED = -1;
 
@@ -532,24 +561,40 @@ public class Pattern {
 	}
 
 	@RequiredArgsConstructor
-	static class Group extends Node {
+	static class GroupHead extends Node {
 
 		final int number;
-		final Node atom;
+		final Node tail;
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
 			matcher.groupStarts[number] = index;
 
-			if (!atom.match(matcher, index, sequence)) {
+			if (!next.match(matcher, index, sequence)) {
 				matcher.groupStarts[number] = -1;
 				return false;
 			}
 
-			final var endIndex = matcher.groupEnds[number] = matcher.last;
+			return true;
+		}
 
-			if (!next.match(matcher, endIndex, sequence)) {
-				matcher.groupStarts[number] = -1;
+		@Override
+		public String toString() {
+			return "Group.head(" + number + ")";
+		}
+
+	}
+
+	@RequiredArgsConstructor
+	static class GroupTail extends Node {
+
+		final int number;
+
+		@Override
+		public boolean match(Matcher matcher, int index, CharSequence sequence) {
+			matcher.groupEnds[number] = index;
+
+			if (!next.match(matcher, index, sequence)) {
 				matcher.groupEnds[number] = -1;
 				return false;
 			}
@@ -559,7 +604,7 @@ public class Pattern {
 
 		@Override
 		public String toString() {
-			return "Group(" + number + ")";
+			return "Group.tail(" + number + ")";
 		}
 
 	}
