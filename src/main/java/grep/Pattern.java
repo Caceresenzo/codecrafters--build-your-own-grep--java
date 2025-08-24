@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import grep.Pattern.Parser.Quantifier;
 import lombok.RequiredArgsConstructor;
 
 public class Pattern {
@@ -52,7 +53,7 @@ public class Pattern {
 					context = new Context();
 					contexts.add(context);
 
-					// TODO Handle double pipes
+					// TODO Handle double pipes, aka zero-length
 					continue;
 				}
 
@@ -77,11 +78,11 @@ public class Pattern {
 				case '[' -> handleCharacterGroup();
 				case '^' -> context.add(new Begin());
 				case '$' -> context.add(new End());
-				case '+' -> context.replace(new GreedyRepeat(context.current, 1, Repeat.UNBOUNDED));
-				case '?' -> context.replace(new LazyRepeat(context.current, 0, 1));
-				case '.' -> context.add(new Char(new CharPredicate.Any()));
+				case '+' -> throw new IllegalArgumentException("unescaped `+` is not allowed");
+				case '?' -> throw new IllegalArgumentException("unescaped `?` is not allowed");
+				case '.' -> handleCharacter(new CharPredicate.Any());
 				case '(' -> handleCaptureGroup();
-				default -> context.add(new Char(new CharPredicate.Character(character)));
+				default -> handleCharacter(new CharPredicate.Character(character));
 			}
 
 			return true;
@@ -108,16 +109,28 @@ public class Pattern {
 			return expression.charAt(index++);
 		}
 
+		private void handleCharacter(CharPredicate predicate) {
+			final var node = new Char(predicate);
+			context.add(node);
+
+			final var quantifier = matchQuantifier();
+			if (quantifier != null) {
+				node.next = new Last();
+
+				final var repeat = new Repeat(node, quantifier);
+				context.replace(repeat);
+			}
+		}
+
 		private void handleEscape() {
 			final var character = consume();
 
 			if (character == '\\') {
-				context.add(new Char(new CharPredicate.Character(character)));
+				handleCharacter(new CharPredicate.Character(character));
 			} else if (Character.isDigit(character)) {
-				context.add(new BackReference(character - '0'));
+				context.add(new BackReference(Character.digit(character, 10)));
 			} else {
-				final var predicate = CharacterRangeClass.fromIdentifier(character);
-				context.add(new Char(predicate));
+				handleCharacter(CharacterRangeClass.fromIdentifier(character));
 			}
 		}
 
@@ -125,10 +138,7 @@ public class Pattern {
 			final var array = new AsciiArrayClass();
 			final var ranges = new ArrayList<CharacterRangeClass>();
 
-			final var negate = index < expression.length() && expression.charAt(index) == '^';
-			if (negate) {
-				index++;
-			}
+			final var negate = match('^');
 
 			while (index < expression.length()) {
 				var character = consume();
@@ -162,7 +172,7 @@ public class Pattern {
 				predicate = new CharPredicate.Not(predicate);
 			}
 
-			context.add(new Char(predicate));
+			handleCharacter(predicate);
 		}
 
 		private void handleCaptureGroup() {
@@ -193,19 +203,25 @@ public class Pattern {
 
 			context = previousContext;
 
-			if (match('+')) {
-				final var node = new GreedyRepeat(head, 1, Repeat.UNBOUNDED);
-				tail.next = new Last();
-
-				context.add(node);
-			} else if (match('?')) {
-				final var node = new GreedyRepeat(head, 0, 1);
+			final var quantifier = matchQuantifier();
+			if (quantifier != null) {
+				final var node = new Repeat(head, quantifier);
 				tail.next = new Last();
 
 				context.add(node);
 			} else {
 				context.add(head, tail);
 			}
+		}
+
+		private Quantifier matchQuantifier() {
+			if (match('+')) {
+				return Quantifier.plus();
+			} else if (match('?')) {
+				return Quantifier.questionMark();
+			}
+
+			return null;
 		}
 
 		private Node toBranchIfNecessary(List<Context> contexts, Node last, Node intermediateLast) {
@@ -272,6 +288,23 @@ public class Pattern {
 				}
 
 				current.next = last;
+			}
+
+		}
+
+		record Quantifier(
+			int min,
+			int max
+		) {
+
+			public static final int UNBOUNDED = Repeat.UNBOUNDED;
+
+			public static Quantifier plus() {
+				return new Quantifier(1, Repeat.UNBOUNDED);
+			}
+
+			public static Quantifier questionMark() {
+				return new Quantifier(0, 1);
 			}
 
 		}
@@ -359,13 +392,11 @@ public class Pattern {
 
 	}
 
-	static class Node {
+	abstract static class Node {
 
 		Node next;
 
-		public boolean match(Matcher matcher, int index, CharSequence sequence) {
-			return true;
-		}
+		public abstract boolean match(Matcher matcher, int index, CharSequence sequence);
 
 	}
 
@@ -464,13 +495,17 @@ public class Pattern {
 	}
 
 	@RequiredArgsConstructor
-	abstract static class Repeat extends Node {
+	static class Repeat extends Node {
 
 		static final int UNBOUNDED = -1;
 
 		final Node atom;
 		final int min;
 		final int max;
+
+		public Repeat(Node atom, Quantifier quantifier) {
+			this(atom, quantifier.min, quantifier.max);
+		}
 
 		@Override
 		public boolean match(Matcher matcher, int index, CharSequence sequence) {
@@ -488,7 +523,21 @@ public class Pattern {
 			return matchMax(matcher, index, sequence, count, maxCount);
 		}
 
-		public abstract boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount);
+		public boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount) {
+			if (index < matcher.to && count++ < maxCount && atom.match(matcher, index, sequence)) {
+				index = matcher.last;
+
+				if (matchMax(matcher, index, sequence, count, maxCount)) {
+					return true;
+				}
+
+				if (next.match(matcher, index, sequence)) {
+					return true;
+				}
+			}
+
+			return next.match(matcher, index, sequence);
+		}
 
 		@Override
 		public String toString() {
@@ -507,55 +556,6 @@ public class Pattern {
 			}
 
 			return "{" + min + "," + max + "}";
-		}
-
-	}
-
-	static class GreedyRepeat extends Repeat {
-
-		public GreedyRepeat(Node atom, int min, int max) {
-			super(atom, min, max);
-		}
-
-		public final boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount) {
-			if (index < matcher.to && count++ < maxCount && atom.match(matcher, index, sequence)) {
-				index = matcher.last;
-
-				if (matchMax(matcher, index, sequence, count, maxCount)) {
-					return true;
-				}
-
-				if (next.match(matcher, index, sequence)) {
-					return true;
-				}
-			}
-
-			return next.match(matcher, index, sequence);
-		}
-
-	}
-
-	static class LazyRepeat extends Repeat {
-
-		public LazyRepeat(Node atom, int min, int max) {
-			super(atom, min, max);
-		}
-
-		@Override
-		public final boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount) {
-			while (index < matcher.to && count++ < maxCount) {
-				if (!atom.match(matcher, index, sequence)) {
-					break;
-				}
-
-				index = matcher.last;
-
-				if (next.match(matcher, index, sequence)) {
-					return true;
-				}
-			}
-
-			return next.match(matcher, index, sequence);
 		}
 
 	}
@@ -804,7 +804,10 @@ public class Pattern {
 
 			@Override
 			public boolean test(char character) {
-				return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character == '_');
+				return (character >= '0' && character <= '9')
+					|| (character >= 'a' && character <= 'z')
+					|| (character >= 'A' && character <= 'Z')
+					|| (character == '_');
 			}
 
 		};
@@ -834,10 +837,6 @@ public class Pattern {
 
 		public AsciiArrayClass() {
 			this.characters = new boolean[256];
-		}
-
-		public AsciiArrayClass(boolean[] characters) {
-			this.characters = characters;
 		}
 
 		public boolean add(char character) {

@@ -41,6 +41,14 @@ class PatternTest {
 	}
 
 	@Test
+	void positiveCharacterGroupWithBackslash() {
+		final var pattern = Pattern.compile("[abc\\\\]");
+
+		assertTrue(pattern.matcher("\\").find(0));
+		assertFalse(pattern.matcher("d").find(0));
+	}
+
+	@Test
 	void positiveCharacterGroupWithDigits() {
 		final var pattern = Pattern.compile("[abc\\d]");
 
