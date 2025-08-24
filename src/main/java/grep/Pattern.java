@@ -6,17 +6,15 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import grep.Pattern.Parser.Quantifier;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 
+@RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public class Pattern {
 
+	final String expression;
 	final Node root;
 	final int groupCount;
-
-	private Pattern(Node root, int groupCount) {
-		this.root = root;
-		this.groupCount = groupCount;
-	}
 
 	public Matcher matcher(CharSequence sequence) {
 		return new Matcher(this, sequence);
@@ -24,6 +22,11 @@ public class Pattern {
 
 	public void debug() {
 		new Printer(root).print();
+	}
+
+	@Override
+	public String toString() {
+		return "Pattern{%s}".formatted(expression);
 	}
 
 	public static Pattern compile(String expression) {
@@ -63,7 +66,7 @@ public class Pattern {
 			final var root = new Start();
 			root.next = toBranchIfNecessary(contexts, absoluteLast, absoluteLast);
 
-			return new Pattern(root, groupCount);
+			return new Pattern(expression, root, groupCount);
 		}
 
 		public boolean hasNext() {
