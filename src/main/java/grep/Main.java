@@ -21,7 +21,7 @@ public class Main {
 		final var extendedRegexpOption = new Option("E", "extended-regexp", false, "PATTERNS are extended regular expressions");
 		extendedRegexpOption.setRequired(true);
 
-		final var recurseOption = new Option("r", "recursive", false, "how to handle directories recursively;");
+		final var recurseOption = new Option("r", "recursive", false, "how to handle directories recursively");
 
 		final var options = new Options();
 		options.addOption(helpOption);

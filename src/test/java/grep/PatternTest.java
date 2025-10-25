@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class PatternTest {
 
@@ -227,13 +229,33 @@ class PatternTest {
 		assertEquals("cat", matcher.group(2));
 		assertEquals("fish", matcher.group(3));
 	}
-	
+
 	@Test
 	void anyPlusAtStart() {
 		final var pattern = Pattern.compile(".+ar");
 		final var matcher = pattern.matcher("carx");
-		
+
 		assertTrue(matcher.find(0));
+	}
+
+	@ParameterizedTest
+	@CsvSource({
+		"ca*t, ct, true",
+		"ca*t, caaat, true",
+		"ca*t, dog, false",
+		"k\\d*t, kt, true",
+		"k\\d*t, k1t, true",
+		"k\\d*t, kabct, false",
+		"k[abc]*t, kt, true",
+		"k[abc]*t, kat, true",
+		"k[abc]*t, kabct, true",
+		"k[abc]*t, kaxyzt, false",
+	})
+	void matchZeroOrMoreTimes(String regex, String input, boolean expected) {
+		final var pattern = Pattern.compile(regex);
+		final var matcher = pattern.matcher(input);
+
+		assertEquals(expected, matcher.find(0));
 	}
 
 }

@@ -143,7 +143,7 @@ public class Pattern {
 
 			final var negate = match('^');
 
-			while (index < expression.length()) {
+			while (hasNext()) {
 				var character = consume();
 
 				if (character == ']') {
@@ -219,9 +219,11 @@ public class Pattern {
 
 		private Quantifier matchQuantifier() {
 			if (match('+')) {
-				return Quantifier.plus();
+				return Quantifier.oneOrMore();
 			} else if (match('?')) {
-				return Quantifier.questionMark();
+				return Quantifier.zeroOrOne();
+			} else if (match('*')) {
+				return Quantifier.zeroOrMore();
 			}
 
 			return null;
@@ -302,12 +304,16 @@ public class Pattern {
 
 			public static final int UNBOUNDED = Repeat.UNBOUNDED;
 
-			public static Quantifier plus() {
+			public static Quantifier oneOrMore() {
 				return new Quantifier(1, Repeat.UNBOUNDED);
 			}
 
-			public static Quantifier questionMark() {
+			public static Quantifier zeroOrOne() {
 				return new Quantifier(0, 1);
+			}
+
+			public static Quantifier zeroOrMore() {
+				return new Quantifier(0, Repeat.UNBOUNDED);
 			}
 
 		}
@@ -483,7 +489,6 @@ public class Pattern {
 			final var endIndex = matcher.to;
 
 			if (index == endIndex && next.match(matcher, index, sequence)) {
-				matcher.hitEnd = true;
 				return true;
 			}
 
@@ -523,22 +528,18 @@ public class Pattern {
 
 			final var maxCount = this.max == UNBOUNDED ? Integer.MAX_VALUE : this.max;
 
-			if (matchMax(matcher, index, sequence, count, maxCount)) {
-				return true;
-			}
-
-			return next.match(matcher, index, sequence);
+			return matchMax(matcher, index, sequence, count, maxCount);
 		}
 
 		public boolean matchMax(Matcher matcher, int index, CharSequence sequence, int count, int maxCount) {
 			if (index < matcher.to && count++ < maxCount && atom.match(matcher, index, sequence)) {
-				index = matcher.last;
+				final var lastIndex = matcher.last;
 
-				if (matchMax(matcher, index, sequence, count, maxCount)) {
+				if (matchMax(matcher, lastIndex, sequence, count, maxCount)) {
 					return true;
 				}
 
-				if (next.match(matcher, index, sequence)) {
+				if (next.match(matcher, lastIndex, sequence)) {
 					return true;
 				}
 			}
