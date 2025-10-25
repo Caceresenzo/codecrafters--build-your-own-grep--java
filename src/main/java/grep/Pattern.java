@@ -224,9 +224,30 @@ public class Pattern {
 				return Quantifier.zeroOrOne();
 			} else if (match('*')) {
 				return Quantifier.zeroOrMore();
+			} else if (!match('{')) {
+				return null;
 			}
 
-			return null;
+			final var minimum = parseNumber();
+			return Quantifier.exactly(minimum);
+		}
+
+		private int parseNumber() {
+			final var builder = new StringBuilder();
+
+			while (true) {
+				final var character = peek();
+				if (Character.isDigit(character)) {
+					builder.append(consume());
+				} else if (character == '}') {
+					consume();
+					break;
+				} else {
+					throw new IllegalArgumentException("expected digit or `}` but found: " + character);
+				}
+			}
+
+			return Integer.parseInt(builder.toString());
 		}
 
 		private Node toBranchIfNecessary(List<Context> contexts, Node last, Node intermediateLast) {
@@ -314,6 +335,10 @@ public class Pattern {
 
 			public static Quantifier zeroOrMore() {
 				return new Quantifier(0, Repeat.UNBOUNDED);
+			}
+
+			public static Quantifier exactly(int times) {
+				return new Quantifier(times, times);
 			}
 
 		}

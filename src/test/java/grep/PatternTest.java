@@ -258,4 +258,22 @@ class PatternTest {
 		assertEquals(expected, matcher.find(0));
 	}
 
+	@ParameterizedTest
+	@CsvSource({
+		"ca{3}t, caaat, true",
+		"ca{3}t, caat, false",
+		"ca{3}t, caaaat, false",
+		"d\\d{2}g, d42g, true",
+		"d\\d{2}g, d1g, false",
+		"d\\d{2}g, d123g, false",
+		"c[xyz]{4}w, czyxzw, true",
+		"c[xyz]{4}w, cxyzw, false",
+	})
+	void matchExactlyNTimes(String regex, String input, boolean expected) {
+		final var pattern = Pattern.compile(regex);
+		final var matcher = pattern.matcher(input);
+
+		assertEquals(expected, matcher.find(0));
+	}
+
 }
