@@ -3,6 +3,7 @@ package grep;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.stream.Collectors;
 
 import grep.Pattern.Parser.Quantifier;
@@ -230,22 +231,34 @@ public class Pattern {
 
 			final var minimum = parseNumber();
 			if (match('}')) {
-				return Quantifier.exactly(minimum);
+				return Quantifier.exactly(minimum.getAsInt());
 			}
 
-			if (match(',')) {
-				match('}');
-
-				return new Quantifier(minimum, Quantifier.UNBOUNDED);
+			if (!match(',')) {
+				throw new IllegalArgumentException("expected `}` or `,`, got: " + peek());
 			}
 
-			throw new UnsupportedOperationException();
+			final var maximum = parseNumber();
+
+			if (!match('}')) {
+				throw new IllegalArgumentException("expected `}`, got: " + peek());
+			}
+
+			if (maximum.isPresent()) {
+				return new Quantifier(minimum.getAsInt(), maximum.getAsInt());
+			}
+
+			return new Quantifier(minimum.getAsInt(), Quantifier.UNBOUNDED);
 		}
 
-		private int parseNumber() {
+		private OptionalInt parseNumber() {
 			final var digits = consumeWhile(Character::isDigit);
 
-			return Integer.parseInt(digits);
+			if (digits.isEmpty()) {
+				return OptionalInt.empty();
+			}
+
+			return OptionalInt.of(Integer.parseInt(digits));
 		}
 
 		private String consumeWhile(CharPredicate condition) {

@@ -284,6 +284,22 @@ class PatternTest {
 		testWithPatten(regex, input, expected);
 	}
 
+	@ParameterizedTest
+	@CsvSource({
+		"'ca{2,4}t', caat, true",
+		"'ca{2,4}t', caaat, true",
+		"'ca{2,4}t', caaaat, true",
+		"'ca{2,4}t', caaaaat, false",
+		"'n\\d{1,3}m', n123m, true",
+		"'n\\d{1,3}m', n1234m, false",
+		"'p[xyz]{2,3}q', pzzzq, true",
+		"'p[xyz]{2,3}q', pxq, false",
+		"'p[xyz]{2,3}q', pxyzyq, false",
+	})
+	void matchBetweenNAndMTimes(String regex, String input, boolean expected) {
+		testWithPatten(regex, input, expected);
+	}
+
 	private void testWithPatten(String regex, String input, boolean expected) {
 		final var pattern = Pattern.compile(regex);
 		final var matcher = pattern.matcher(input);
