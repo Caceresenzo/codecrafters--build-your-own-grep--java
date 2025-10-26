@@ -229,25 +229,38 @@ public class Pattern {
 			}
 
 			final var minimum = parseNumber();
-			return Quantifier.exactly(minimum);
+			if (match('}')) {
+				return Quantifier.exactly(minimum);
+			}
+
+			if (match(',')) {
+				match('}');
+
+				return new Quantifier(minimum, Quantifier.UNBOUNDED);
+			}
+
+			throw new UnsupportedOperationException();
 		}
 
 		private int parseNumber() {
+			final var digits = consumeWhile(Character::isDigit);
+
+			return Integer.parseInt(digits);
+		}
+
+		private String consumeWhile(CharPredicate condition) {
 			final var builder = new StringBuilder();
 
-			while (true) {
-				final var character = peek();
-				if (Character.isDigit(character)) {
-					builder.append(consume());
-				} else if (character == '}') {
-					consume();
+			char character;
+			while ((character = peek()) != '\0') {
+				if (!condition.test(character)) {
 					break;
-				} else {
-					throw new IllegalArgumentException("expected digit or `}` but found: " + character);
 				}
+
+				builder.append(consume());
 			}
 
-			return Integer.parseInt(builder.toString());
+			return builder.toString();
 		}
 
 		private Node toBranchIfNecessary(List<Context> contexts, Node last, Node intermediateLast) {

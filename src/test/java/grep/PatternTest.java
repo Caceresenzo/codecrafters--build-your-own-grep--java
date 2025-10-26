@@ -252,10 +252,7 @@ class PatternTest {
 		"k[abc]*t, kaxyzt, false",
 	})
 	void matchZeroOrMoreTimes(String regex, String input, boolean expected) {
-		final var pattern = Pattern.compile(regex);
-		final var matcher = pattern.matcher(input);
-
-		assertEquals(expected, matcher.find(0));
+		testWithPatten(regex, input, expected);
 	}
 
 	@ParameterizedTest
@@ -270,6 +267,24 @@ class PatternTest {
 		"c[xyz]{4}w, cxyzw, false",
 	})
 	void matchExactlyNTimes(String regex, String input, boolean expected) {
+		testWithPatten(regex, input, expected);
+	}
+
+	@ParameterizedTest
+	@CsvSource({
+		"'ca{2,}t', caat, true",
+		"'ca{2,}t', caaaaat, true",
+		"'ca{2,}t', cat, false",
+		"'x\\d{3,}y', x9999y, true",
+		"'x\\d{3,}y', x42y, false",
+		"'b[aeiou]{2,}r', baeiour, true",
+		"'b[aeiou]{2,}r', bar, false",
+	})
+	void matchAtLeastNTimes(String regex, String input, boolean expected) {
+		testWithPatten(regex, input, expected);
+	}
+
+	private void testWithPatten(String regex, String input, boolean expected) {
 		final var pattern = Pattern.compile(regex);
 		final var matcher = pattern.matcher(input);
 
